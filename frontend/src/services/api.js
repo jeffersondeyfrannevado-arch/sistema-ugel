@@ -89,6 +89,55 @@ export async function procesarArchivo(archivo, columnasResaltadas) {
   return data
 }
 
+export async function listarFormatosExcel() {
+  const res = await fetch(`${BASE_URL}/matricula/formatos`, {
+    headers: getHeaders(),
+  })
+
+  const data = await res.json()
+  if (!res.ok || !data.success) {
+    if (res.status === 401) throw new Error('No autorizado')
+    throw new Error(data?.mensaje || 'No se pudieron listar los formatos')
+  }
+
+  return data.formatos
+}
+
+export async function analizarFormatoExcel(archivo) {
+  const formData = new FormData()
+  formData.append('archivo', archivo)
+
+  const res = await fetch(`${BASE_URL}/matricula/formatos/analizar`, {
+    method: 'POST',
+    headers: getHeaders(true),
+    body: formData,
+  })
+
+  const data = await res.json()
+  if (!res.ok || !data.success) {
+    if (res.status === 401) throw new Error('No autorizado')
+    throw new Error(data?.mensaje || 'No se pudo analizar el formato')
+  }
+
+  return data.analisis
+}
+
+export async function guardarFormatoExcel(payload) {
+  const res = await fetch(`${BASE_URL}/matricula/formatos`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+
+  const data = await res.json()
+  if (!res.ok || !data.success) {
+    if (res.status === 401) throw new Error('No autorizado')
+    throw new Error(data?.mensaje || 'No se pudo guardar el formato')
+  }
+
+  return data.formato
+}
+
 export async function descargarArchivo(rutaBase64, nombreArchivo) {
   const res = await fetch(`${BASE_URL}/matricula/descargar/${rutaBase64}`, { headers: getHeaders() })
   if (!res.ok) throw new Error('No se pudo descargar el archivo')

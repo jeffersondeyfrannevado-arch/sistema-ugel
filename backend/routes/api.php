@@ -16,11 +16,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('matricula')->group(function () {
         Route::post('/preview', [MatriculaController::class, 'preview']);
         Route::post('/procesar', [MatriculaController::class, 'procesar']);
+        Route::get('/formatos', [MatriculaController::class, 'listarFormatos']);
+        Route::post('/formatos/analizar', [MatriculaController::class, 'analizarFormato']);
+        Route::post('/formatos', [MatriculaController::class, 'guardarFormato']);
         Route::get('/descargar/{filename}', [MatriculaController::class, 'descargar']);
         Route::get('/descargar-pdf/{filename}', [MatriculaController::class, 'descargarPdf']);
         Route::get('/descargar-zip', [MatriculaController::class, 'descargarZip']);
     });
 });
-
 
 

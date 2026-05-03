@@ -3,6 +3,9 @@
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -14,5 +17,23 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        //
+        $exceptions->render(function (\Throwable $e, Request $request) {
+            if (!($request->is('api/*') || $request->expectsJson())) {
+                return null;
+            }
+
+            if ($e instanceof QueryException || $e instanceof \PDOException) {
+                return response()->json([
+                    'success' => false,
+                    'mensaje' => 'La base de datos no esta disponible. Verifica que MySQL este encendido y que la conexion configurada en backend/.env sea correcta.',
+                ], Response::HTTP_SERVICE_UNAVAILABLE);
+            }
+
+            return response()->json([
+                'success' => false,
+                'mensaje' => app()->hasDebugModeEnabled()
+                    ? $e->getMessage()
+                    : 'Ocurrio un error interno en el servidor.',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        });
     })->create();

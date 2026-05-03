@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Str;
 use Illuminate\Http\UploadedFile;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -75,6 +76,19 @@ class MatriculaService
                 'P5H' => 35, 'P5M' => 36,
             ],
         ],
+        'PRIMARIA' => [
+            'titulo' => 'PRIMARIA',
+            'headers' => ['1ro H', '1ro M', '2do H', '2do M', '3ro H', '3ro M', '4to H', '4to M', '5to H', '5to M', '6to H', '6to M'],
+            'fields' => ['PR1H', 'PR1M', 'PR2H', 'PR2M', 'PR3H', 'PR3M', 'PR4H', 'PR4M', 'PR5H', 'PR5M', 'PR6H', 'PR6M'],
+            'columnas' => [
+                'PR1H' => 27, 'PR1M' => 28,
+                'PR2H' => 29, 'PR2M' => 30,
+                'PR3H' => 31, 'PR3M' => 32,
+                'PR4H' => 33, 'PR4M' => 34,
+                'PR5H' => 35, 'PR5M' => 36,
+                'PR6H' => 37, 'PR6M' => 38,
+            ],
+        ],
         'INICIAL' => [
             'titulo' => 'INICIAL',
             'headers' => ['0 anos H', '0 anos M', '1 ano H', '1 ano M', '2 anos H', '2 anos M', '3 anos H', '3 anos M', '4 anos H', '4 anos M', '5 anos H', '5 anos M', 'Mas de 5 anos H', 'Mas de 5 anos M'],
@@ -93,7 +107,7 @@ class MatriculaService
 
     private string $outputBase;
 
-    public function __construct()
+    public function __construct(private ExcelFormatTrainingService $trainingService)
     {
         $this->outputBase = storage_path('app/matricula_output');
     }
@@ -110,19 +124,7 @@ class MatriculaService
         $sheet = $spreadsheet->getActiveSheet();
         $rawRows = $sheet->toArray(null, true, true, false);
 
-        $dataStartRow = $this->encontrarFilaDatos($rawRows);
-        $headerRowIndex = max(0, $dataStartRow - 2);
-        $subHeaderRowIndex = max(0, $dataStartRow - 1);
-        $formato = $this->detectarFormato(
-            $rawRows[$headerRowIndex] ?? [],
-            $rawRows[$subHeaderRowIndex] ?? [],
-            $sheet->getTitle(),
-            $rawRows[$dataStartRow][self::COLS['NIVEL']] ?? ''
-        );
-        $columnasDetectadas = $this->resolverColumnas(
-            $rawRows[$headerRowIndex] ?? [],
-            $rawRows[$subHeaderRowIndex] ?? []
-        );
+        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheet->getTitle());
 
         $registros = [];
         $errores = [];
@@ -185,6 +187,7 @@ class MatriculaService
 
         return [
             'nivel' => $formato['titulo'],
+            'perfil_formato' => $perfil['nombre'] ?? null,
             'estadisticas' => $estadisticas,
             'archivos' => $archivosGenerados,
             'errores' => $errores,
@@ -197,15 +200,7 @@ class MatriculaService
         $sheet = $spreadsheet->getActiveSheet();
         $rawRows = $sheet->toArray('', true, true, false);
 
-        $dataStartRow = $this->encontrarFilaDatos($rawRows);
-        $headerRowIndex = max(0, $dataStartRow - 2);
-        $subHeaderRowIndex = max(0, $dataStartRow - 1);
-        $formato = $this->detectarFormato(
-            $rawRows[$headerRowIndex] ?? [],
-            $rawRows[$subHeaderRowIndex] ?? [],
-            $sheet->getTitle(),
-            $rawRows[$dataStartRow][self::COLS['NIVEL']] ?? ''
-        );
+        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheet->getTitle());
 
         $headers = $this->buildPreviewHeaders(
             $rawRows[$headerRowIndex] ?? [],
@@ -227,6 +222,8 @@ class MatriculaService
         return [
             'sheet' => $sheet->getTitle(),
             'nivel' => $formato['titulo'],
+            'perfil_formato' => $perfil['nombre'] ?? null,
+            'columnas_detectadas' => $columnasDetectadas,
             'fila_inicio_datos' => $dataStartRow + 1,
             'total_filas_excel' => count($rawRows),
             'headers' => $headers,
@@ -291,12 +288,10 @@ class MatriculaService
 
     private function limpiarYValidarFila(array $row, int $lineaNum, array $formato, array $columnasDetectadas = []): array
     {
-        $c = self::COLS;
-
-        $tipoIE = trim((string) ($row[$c['TIPO_IE']] ?? ''));
-        $nombreIE = trim((string) ($row[$c['NOMBRE_IE']] ?? ''));
-        $distrito = trim((string) ($row[$c['DISTRITO']] ?? ''));
-        $codMod = trim((string) ($row[$c['COD_MOD']] ?? ''));
+        $tipoIE = trim((string) $this->obtenerValorCampo($row, 'TIPO_IE', $columnasDetectadas));
+        $nombreIE = trim((string) $this->obtenerValorCampo($row, 'NOMBRE_IE', $columnasDetectadas));
+        $distrito = trim((string) $this->obtenerValorCampo($row, 'DISTRITO', $columnasDetectadas));
+        $codMod = trim((string) $this->obtenerValorCampo($row, 'COD_MOD', $columnasDetectadas));
 
         if ($nombreIE === '') {
             return ['valida' => false, 'error' => "Linea {$lineaNum}: Nombre de IE vacio"];
@@ -311,37 +306,35 @@ class MatriculaService
         $modalidad = $esPublico ? 'PUBLICO' : 'PRIVADO';
 
         $datos = [
-            'DRE' => $this->limpiarTexto($row[$c['DRE']] ?? ''),
-            'UGEL' => $this->limpiarTexto($row[$c['UGEL']] ?? ''),
-            'DEPARTAMENTO' => $this->normalizarTexto($row[$c['DEPARTAMENTO']] ?? ''),
-            'PROVINCIA' => $this->normalizarTexto($row[$c['PROVINCIA']] ?? ''),
+            'DRE' => $this->limpiarTexto($this->obtenerValorCampo($row, 'DRE', $columnasDetectadas)),
+            'UGEL' => $this->limpiarTexto($this->obtenerValorCampo($row, 'UGEL', $columnasDetectadas)),
+            'DEPARTAMENTO' => $this->normalizarTexto($this->obtenerValorCampo($row, 'DEPARTAMENTO', $columnasDetectadas)),
+            'PROVINCIA' => $this->normalizarTexto($this->obtenerValorCampo($row, 'PROVINCIA', $columnasDetectadas)),
             'DISTRITO' => $this->normalizarTexto($distrito),
-            'CENTRO_POBLADO' => $this->normalizarTexto($row[$c['CENTRO_POBLADO']] ?? ''),
+            'CENTRO_POBLADO' => $this->normalizarTexto($this->obtenerValorCampo($row, 'CENTRO_POBLADO', $columnasDetectadas)),
             'COD_MOD' => $codMod,
-            'ANEXO' => $this->limpiarNumero($row[$c['ANEXO']] ?? 0),
+            'ANEXO' => $this->limpiarNumero($this->obtenerValorCampo($row, 'ANEXO', $columnasDetectadas)),
             'NOMBRE_IE' => mb_strtoupper(trim($nombreIE)),
-            'NIVEL' => $this->limpiarTexto($row[$c['NIVEL']] ?? ''),
-            'MODALIDAD' => $this->limpiarTexto($row[$c['MODALIDAD']] ?? ''),
+            'NIVEL' => $this->limpiarTexto($this->obtenerValorCampo($row, 'NIVEL', $columnasDetectadas)),
+            'MODALIDAD' => $this->limpiarTexto($this->obtenerValorCampo($row, 'MODALIDAD', $columnasDetectadas)),
             'TIPO_IE' => $tipoIE,
-            'TOTAL_MATRICULADOS' => $this->limpiarNumero($row[$c['TOTAL_MATRICULADOS']] ?? 0),
-            'MATRICULA_DEFINITIVA' => $this->limpiarNumero($row[$c['MATRICULA_DEFINITIVA']] ?? 0),
-            'MATRICULA_EN_PROCESO' => $this->limpiarNumero(
-                $this->obtenerValorCampo($row, 'MATRICULA_EN_PROCESO', $columnasDetectadas)
-            ),
-            'DNI_VALIDADO' => $this->limpiarNumero($row[$c['DNI_VALIDADO']] ?? 0),
-            'DNI_SIN_VALIDAR' => $this->limpiarNumero($row[$c['DNI_SIN_VALIDAR']] ?? 0),
-            'SIN_DNI' => $this->limpiarNumero($row[$c['SIN_DNI']] ?? 0),
-            'TOTAL_GRADOS' => $this->limpiarNumero($row[$c['TOTAL_GRADOS']] ?? 0),
-            'TOTAL_SECCIONES' => $this->limpiarNumero($row[$c['TOTAL_SECCIONES']] ?? 0),
-            'NOM_GENERADAS' => $this->limpiarNumero($row[$c['NOM_GENERADAS']] ?? 0),
-            'NOM_APROBADAS' => $this->limpiarNumero($row[$c['NOM_APROBADAS']] ?? 0),
-            'NOM_RECTIFICAR' => $this->limpiarNumero($row[$c['NOM_RECTIFICAR']] ?? 0),
+            'TOTAL_MATRICULADOS' => $this->limpiarNumero($this->obtenerValorCampo($row, 'TOTAL_MATRICULADOS', $columnasDetectadas)),
+            'MATRICULA_DEFINITIVA' => $this->limpiarNumero($this->obtenerValorCampo($row, 'MATRICULA_DEFINITIVA', $columnasDetectadas)),
+            'MATRICULA_EN_PROCESO' => $this->limpiarNumero($this->obtenerValorCampo($row, 'MATRICULA_EN_PROCESO', $columnasDetectadas)),
+            'DNI_VALIDADO' => $this->limpiarNumero($this->obtenerValorCampo($row, 'DNI_VALIDADO', $columnasDetectadas)),
+            'DNI_SIN_VALIDAR' => $this->limpiarNumero($this->obtenerValorCampo($row, 'DNI_SIN_VALIDAR', $columnasDetectadas)),
+            'SIN_DNI' => $this->limpiarNumero($this->obtenerValorCampo($row, 'SIN_DNI', $columnasDetectadas)),
+            'TOTAL_GRADOS' => $this->limpiarNumero($this->obtenerValorCampo($row, 'TOTAL_GRADOS', $columnasDetectadas)),
+            'TOTAL_SECCIONES' => $this->limpiarNumero($this->obtenerValorCampo($row, 'TOTAL_SECCIONES', $columnasDetectadas)),
+            'NOM_GENERADAS' => $this->limpiarNumero($this->obtenerValorCampo($row, 'NOM_GENERADAS', $columnasDetectadas)),
+            'NOM_APROBADAS' => $this->limpiarNumero($this->obtenerValorCampo($row, 'NOM_APROBADAS', $columnasDetectadas)),
+            'NOM_RECTIFICAR' => $this->limpiarNumero($this->obtenerValorCampo($row, 'NOM_RECTIFICAR', $columnasDetectadas)),
             '_modalidad' => $modalidad,
             '_nivel_reporte' => $formato['titulo'],
         ];
 
         foreach ($formato['columnas'] as $campo => $indice) {
-            $datos[$campo] = $this->limpiarNumero($row[$indice] ?? 0);
+            $datos[$campo] = $this->limpiarNumero($this->obtenerValorCampo($row, $campo, $columnasDetectadas));
         }
 
         return ['valida' => true, 'datos' => $datos];
@@ -355,6 +348,34 @@ class MatriculaService
         }
 
         return $row[$indice] ?? 0;
+    }
+
+    private function resolverContextoExcel(array $rawRows, string $sheetTitle): array
+    {
+        $dataStartRow = $this->encontrarFilaDatos($rawRows);
+        $headerRowIndex = max(0, $dataStartRow - 2);
+        $subHeaderRowIndex = max(0, $dataStartRow - 1);
+        $headerRow = $rawRows[$headerRowIndex] ?? [];
+        $subHeaderRow = $rawRows[$subHeaderRowIndex] ?? [];
+        $nivelMuestra = $rawRows[$dataStartRow][self::COLS['NIVEL']] ?? '';
+        $nivelDetectado = $this->detectarFormato($headerRow, $subHeaderRow, $sheetTitle, $nivelMuestra)['titulo'];
+
+        $perfil = $this->trainingService->findBestProfile($headerRow, $subHeaderRow, $sheetTitle, $nivelMuestra, $nivelDetectado);
+
+        if ($perfil) {
+            $dataStartRow = max(0, ((int) ($perfil['data_start_row'] ?? ($dataStartRow + 1))) - 1);
+            $headerRowIndex = (int) ($perfil['header_row_index'] ?? $headerRowIndex);
+            $subHeaderRowIndex = (int) ($perfil['subheader_row_index'] ?? $subHeaderRowIndex);
+            $formato = $this->obtenerFormatoPorNivel((string) ($perfil['nivel'] ?? 'SECUNDARIA'));
+            $columnasDetectadas = array_map('intval', $perfil['columns'] ?? []);
+
+            return [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil];
+        }
+
+        $formato = $this->obtenerFormatoPorNivel($nivelDetectado);
+        $columnasDetectadas = $this->resolverColumnas($headerRow, $subHeaderRow, $formato);
+
+        return [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, null];
     }
 
     private function agruparPorDistrito(array $registros): array
@@ -553,7 +574,22 @@ class MatriculaService
             return self::FORMATOS['INICIAL'];
         }
 
+        if (
+            str_contains($textoCabecera, 'PRIMARIA') ||
+            str_contains($textoCabecera, 'B0 - PRIMARIA') ||
+            str_contains($textoCabecera, 'SEXTO')
+        ) {
+            return self::FORMATOS['PRIMARIA'];
+        }
+
         return self::FORMATOS['SECUNDARIA'];
+    }
+
+    private function obtenerFormatoPorNivel(string $nivel): array
+    {
+        $nivel = strtoupper(trim($nivel));
+
+        return self::FORMATOS[$nivel] ?? self::FORMATOS['SECUNDARIA'];
     }
 
     private function esColumnaResaltada(string $header, array $columnasResaltadas): bool
@@ -576,20 +612,43 @@ class MatriculaService
     private function normalizarEncabezado(string $texto): string
     {
         $texto = trim($texto);
-        $texto = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $texto) ?: $texto;
+        $texto = Str::ascii($texto);
         $texto = strtoupper($texto);
+        $texto = str_replace(["'", "`", "´", "’"], '', $texto);
 
         return preg_replace('/\s+/', ' ', $texto) ?? $texto;
     }
 
-    private function resolverColumnas(array $headerRow, array $subHeaderRow): array
+    private function resolverColumnas(array $headerRow, array $subHeaderRow, array $formato): array
     {
         $aliases = [
+            'DRE' => ['DRE'],
+            'UGEL' => ['UGEL'],
+            'DEPARTAMENTO' => ['DEPARTAMENTO'],
+            'PROVINCIA' => ['PROVINCIA'],
+            'DISTRITO' => ['DISTRITO'],
+            'CENTRO_POBLADO' => ['CENTRO POBLADO'],
+            'COD_MOD' => ['COD MOD', 'COD. MOD.', 'COD MOD.'],
+            'ANEXO' => ['ANEXO'],
+            'NOMBRE_IE' => ['NOMBRE DE IE', 'NOMBRE IE', 'INSTITUCION EDUCATIVA', 'IE'],
+            'NIVEL' => ['NIVEL'],
+            'MODALIDAD' => ['MODALIDAD'],
+            'TIPO_IE' => ['TIPO IE', 'TIPO DE IE'],
+            'TOTAL_MATRICULADOS' => ['TOTAL MATRICULADOS', 'TOTAL DE ESTUDIANTES MATRICULADOS', 'TOTAL DE ESTUDIANTES MATRICULADOS (*)'],
+            'MATRICULA_DEFINITIVA' => ['MATRICULA DEFINITIVA'],
             'MATRICULA_EN_PROCESO' => [
                 'MATRICULA EN PROCESO',
                 'EN PROCESO',
                 'MATRICULA PROCESO',
             ],
+            'DNI_VALIDADO' => ['DNI VALIDADO'],
+            'DNI_SIN_VALIDAR' => ['DNI SIN VALIDAR'],
+            'SIN_DNI' => ['SIN DNI', 'REGISTRADO SIN DNI'],
+            'TOTAL_GRADOS' => ['TOTAL GRADOS'],
+            'TOTAL_SECCIONES' => ['TOTAL SECCIONES'],
+            'NOM_GENERADAS' => ['GENERADAS', 'NOMINAS GENERADAS'],
+            'NOM_APROBADAS' => ['APROBADAS', 'NOMINAS APROBADAS'],
+            'NOM_RECTIFICAR' => ['POR RECTIFICAR', 'NOMINAS POR RECTIFICAR'],
         ];
 
         $mapa = [];
@@ -616,6 +675,20 @@ class MatriculaService
                         break;
                     }
                 }
+            }
+        }
+
+        $indicesGrado = [];
+        for ($i = 0; $i < $limit; $i++) {
+            $sub = $this->normalizarEncabezado((string) ($subHeaderRow[$i] ?? ''));
+            if (in_array($sub, ['HOMBRES', 'MUJERES'], true)) {
+                $indicesGrado[] = $i;
+            }
+        }
+
+        foreach (array_values($formato['fields']) as $posicion => $campo) {
+            if (isset($indicesGrado[$posicion])) {
+                $mapa[$campo] = $indicesGrado[$posicion];
             }
         }
 

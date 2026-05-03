@@ -629,6 +629,149 @@ body {
   gap: 16px;
 }
 
+.training-layout {
+  display: grid;
+  gap: 18px;
+}
+
+.training-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+}
+
+.training-actions-end {
+  justify-content: flex-end;
+}
+
+.training-banner {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  font-weight: 600;
+}
+
+.training-banner-success {
+  background: #edf7ef;
+  border: 1px solid #cde7d3;
+  color: #28593a;
+}
+
+.training-banner-error {
+  background: #fbefee;
+  border: 1px solid #e8cac6;
+  color: #814d47;
+}
+
+.training-summary,
+.training-config-grid,
+.training-map-grid,
+.training-profiles {
+  display: grid;
+  gap: 14px;
+}
+
+.training-summary,
+.training-profiles {
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.training-config-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 18px;
+}
+
+.training-field {
+  display: grid;
+  gap: 8px;
+}
+
+.training-field span {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.training-field input,
+.training-field select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 12px;
+  padding: 11px 12px;
+  font: inherit;
+  color: var(--text);
+}
+
+.training-field-wide {
+  grid-column: 1 / -1;
+}
+
+.training-headers,
+.training-map-card,
+.training-profile-card {
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  border-radius: var(--radius-md);
+  padding: 16px;
+}
+
+.training-map-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.training-map-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.training-map-head strong {
+  font-size: 1rem;
+}
+
+.training-map-head span,
+.training-profile-card p {
+  color: var(--muted);
+}
+
+.training-header-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.training-header-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: #fff;
+}
+
+.training-header-chip strong {
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+}
+
+.training-profile-card p {
+  margin: 8px 0 0;
+  line-height: 1.55;
+}
+
 .dashboard-card {
   overflow: hidden;
 }
@@ -941,7 +1084,9 @@ body {
 
   .hero-summary,
   .stats-grid,
-  .dashboard-grid {
+  .dashboard-grid,
+  .training-config-grid,
+  .training-map-layout {
     width: 100%;
     grid-template-columns: 1fr;
   }

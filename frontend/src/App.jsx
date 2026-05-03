@@ -5,6 +5,7 @@ import PreviewTable from './components/PreviewTable'
 import ResultsPanel from './components/ResultsPanel'
 import StatsCard from './components/StatsCard'
 import Login from './components/Login'
+import TrainingPanel from './components/TrainingPanel'
 import { previewArchivo, procesarArchivo, logout } from './services/api'
 import './App.css'
 
@@ -166,7 +167,7 @@ export default function App() {
   const descargasRef = useRef(null)
   const previewRef = useRef(null)
 
-  const nivelProcesado = resultado?.nivel || 'Inicial / Secundaria'
+  const nivelProcesado = resultado?.nivel || 'Inicial / Primaria / Secundaria'
 
   const dashboardDisponible = estado === 'listo' && resultado
   const previewDisponible = estado === 'listo' && preview
@@ -313,6 +314,12 @@ export default function App() {
             Vista previa Excel
           </button>
           <button
+            className={`nav-item ${navActivo === 'entrenamiento' ? 'nav-item-active' : ''}`}
+            onClick={() => setNavActivo('entrenamiento')}
+          >
+            Entrenar formatos
+          </button>
+          <button
             className="nav-item nav-item-secondary"
             onClick={handleReset}
             disabled={!archivo && !resultado}
@@ -356,7 +363,7 @@ export default function App() {
             <div className="hero-copy">
               <h1>Procesamiento de archivos</h1>
               <p className="hero-text">
-                Carga reportes de Inicial o Secundaria, revisa el resumen del proceso
+                Carga reportes de Inicial, Primaria o Secundaria, revisa el resumen del proceso
                 y descarga archivos organizados por modalidad y distrito.
               </p>
             </div>
@@ -364,7 +371,7 @@ export default function App() {
             <div className="hero-summary">
               <div className="summary-item">
                 <span className="summary-label">Cobertura</span>
-                <strong>Inicial y Secundaria</strong>
+                <strong>Inicial, Primaria y Secundaria</strong>
               </div>
               <div className="summary-item">
                 <span className="summary-label">Nivel actual</span>
@@ -505,6 +512,10 @@ export default function App() {
                 <p>Procesa un archivo en el modulo de Procesamiento para revisar aqui la tabla original del Excel cargado.</p>
               </div>
             </section>
+          )}
+
+          {navActivo === 'entrenamiento' && (
+            <TrainingPanel onUnauthorized={handleLogout} />
           )}
         </main>
 

@@ -4,12 +4,16 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Services\MatriculaService;
+use App\Services\ExcelFormatTrainingService;
 use Illuminate\Support\Facades\Storage;
 use ZipArchive;
 
 class MatriculaController extends Controller
 {
-    public function __construct(protected MatriculaService $service) {}
+    public function __construct(
+        protected MatriculaService $service,
+        protected ExcelFormatTrainingService $trainingService
+    ) {}
 
     public function preview(Request $request)
     {
@@ -118,5 +122,63 @@ class MatriculaController extends Controller
         $zip->close();
 
         return response()->download($zipPath)->deleteFileAfterSend(true);
+    }
+
+    public function listarFormatos()
+    {
+        return response()->json([
+            'success' => true,
+            'formatos' => $this->trainingService->listProfiles(),
+        ]);
+    }
+
+    public function analizarFormato(Request $request)
+    {
+        $request->validate([
+            'archivo' => 'required|file|mimes:xlsx,xls|max:20480',
+        ]);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'analisis' => $this->trainingService->analyzeWorkbook($request->file('archivo')),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'mensaje' => 'Error al analizar el formato: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function guardarFormato(Request $request)
+    {
+        $request->validate([
+            'nombre' => 'required|string|max:255',
+            'nivel' => 'required|string|max:50',
+            'columns' => 'required|array',
+            'match_keywords' => 'nullable|array',
+            'data_start_row' => 'nullable|integer|min:1',
+            'header_row_index' => 'nullable|integer|min:1',
+            'subheader_row_index' => 'nullable|integer|min:1',
+        ]);
+
+        try {
+            return response()->json([
+                'success' => true,
+                'mensaje' => 'Formato entrenado guardado correctamente',
+                'formato' => $this->trainingService->saveProfile($request->all()),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'mensaje' => $e->getMessage(),
+            ], 422);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'mensaje' => 'Error al guardar el formato: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }
