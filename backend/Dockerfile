@@ -53,5 +53,5 @@ ENV PORT=80
 # Expose port
 EXPOSE 80
 
-# Start Apache
-CMD ["apache2-foreground"]
+# Start Apache with auto-migration
+CMD ["sh", "-c", "php artisan migrate --force && apache2-foreground"]
