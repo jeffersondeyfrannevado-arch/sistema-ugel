@@ -1,6 +1,38 @@
 import { useState } from 'react'
 import { descargarArchivo, descargarZip } from '../services/api'
 
+function GrupoArchivos({ titulo, lista, colorClass, descargando, onDescargar }) {
+  return (
+    <section className={`results-group ${colorClass}`}>
+      <div className="group-title">
+        <strong>{titulo}</strong>
+        <span>{lista.length} archivo(s)</span>
+      </div>
+
+      <div className="files-list">
+        {lista.map((a, i) => (
+          <article key={i} className="file-row">
+            <div className="file-info">
+              <span className="file-icon">{a.nivel?.slice(0, 1) || 'R'}</span>
+              <div>
+                <strong>{a.distrito}</strong>
+                <span>{a.registros} institucion(es) - {a.archivo}</span>
+              </div>
+            </div>
+            <button
+              className="btn-download"
+              onClick={() => onDescargar(a)}
+              disabled={descargando === a.ruta}
+            >
+              {descargando === a.ruta ? 'Descargando...' : 'Excel'}
+            </button>
+          </article>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 export default function ResultsPanel({ archivos, errores }) {
   const [descargando, setDescargando] = useState(null)
 
@@ -25,36 +57,6 @@ export default function ResultsPanel({ archivos, errores }) {
     }
   }
 
-  const GrupoArchivos = ({ titulo, lista, colorClass }) => (
-    <section className={`results-group ${colorClass}`}>
-      <div className="group-title">
-        <strong>{titulo}</strong>
-        <span>{lista.length} archivo(s)</span>
-      </div>
-
-      <div className="files-list">
-        {lista.map((a, i) => (
-          <article key={i} className="file-row">
-            <div className="file-info">
-              <span className="file-icon">{a.nivel?.slice(0, 1) || 'R'}</span>
-              <div>
-                <strong>{a.distrito}</strong>
-                <span>{a.registros} institucion(es) - {a.archivo}</span>
-              </div>
-            </div>
-            <button
-              className="btn-download"
-              onClick={() => handleDescargar(a)}
-              disabled={descargando === a.ruta}
-            >
-              {descargando === a.ruta ? 'Descargando...' : 'Excel'}
-            </button>
-          </article>
-        ))}
-      </div>
-    </section>
-  )
-
   return (
     <div className="results-panel">
       <div className="zip-row">
@@ -71,11 +73,11 @@ export default function ResultsPanel({ archivos, errores }) {
       </div>
 
       {publicos.length > 0 && (
-        <GrupoArchivos titulo="Gestion publica" lista={publicos} colorClass="grupo-publico" />
+        <GrupoArchivos titulo="Gestion publica" lista={publicos} colorClass="grupo-publico" descargando={descargando} onDescargar={handleDescargar} />
       )}
 
       {privados.length > 0 && (
-        <GrupoArchivos titulo="Gestion privada" lista={privados} colorClass="grupo-privado" />
+        <GrupoArchivos titulo="Gestion privada" lista={privados} colorClass="grupo-privado" descargando={descargando} onDescargar={handleDescargar} />
       )}
 
       {errores && errores.length > 0 && (

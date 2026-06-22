@@ -6,7 +6,8 @@ import ResultsPanel from './components/ResultsPanel'
 import StatsCard from './components/StatsCard'
 import Login from './components/Login'
 import TrainingPanel from './components/TrainingPanel'
-import { previewArchivo, procesarArchivo, logout } from './services/api'
+import AdminControlPanel from './components/AdminControlPanel'
+import { previewArchivo, procesarArchivo, logout, getCurrentUser, refreshToken } from './services/api'
 import './App.css'
 
 function DashboardPanel({ resultado }) {
@@ -18,9 +19,9 @@ function DashboardPanel({ resultado }) {
 
   const donutStyle = {
     background: `conic-gradient(
-      #315efb 0 ${(publicos / total) * 100}%,
-      #4f7cff ${(publicos / total) * 100}% ${((publicos + privados) / total) * 100}%,
-      #d9dde3 ${((publicos + privados) / total) * 100}% 100%
+      #4f46e5 0 ${(publicos / total) * 100}%,
+      #8b5cf6 ${(publicos / total) * 100}% ${((publicos + privados) / total) * 100}%,
+      #cbd5e1 ${((publicos + privados) / total) * 100}% 100%
     )`,
   }
 
@@ -168,6 +169,8 @@ export default function App() {
   const previewRef = useRef(null)
 
   const nivelProcesado = resultado?.nivel || 'Inicial / Primaria / Secundaria'
+  const isAdmin = (user?.permissions || []).includes('admin.dashboard.view')
+  const canManageFormats = (user?.permissions || []).includes('admin.formats.manage')
 
   const dashboardDisponible = estado === 'listo' && resultado
   const previewDisponible = estado === 'listo' && preview
@@ -223,9 +226,66 @@ export default function App() {
     } catch (e) {
       console.error(e)
     } finally {
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user')
       setUser(null)
     }
   }
+
+  const handleCurrentUserChange = (updatedUser) => {
+    setUser(updatedUser)
+    localStorage.setItem('user', JSON.stringify(updatedUser))
+  }
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function refreshUser() {
+      const token = localStorage.getItem('auth_token')
+      if (!token) return
+
+      try {
+        const current = await getCurrentUser()
+        if (!cancelled) {
+          setUser(current)
+          localStorage.setItem('user', JSON.stringify(current))
+        }
+      } catch {
+        if (!cancelled) {
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('user')
+          setUser(null)
+        }
+      }
+    }
+
+    refreshUser()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    const expiresAt = localStorage.getItem('auth_expires_at')
+    const token = localStorage.getItem('auth_token')
+    if (!token || !expiresAt) return undefined
+
+    const msUntilRefresh = new Date(expiresAt).getTime() - Date.now() - (5 * 60 * 1000)
+    const timeout = window.setTimeout(async () => {
+      try {
+        const data = await refreshToken()
+        localStorage.setItem('auth_token', data.access_token)
+        if (data.expires_at) {
+          localStorage.setItem('auth_expires_at', data.expires_at)
+        }
+      } catch {
+        handleLogout()
+      }
+    }, Math.max(msUntilRefresh, 1000))
+
+    return () => window.clearTimeout(timeout)
+  }, [user])
 
   useEffect(() => {
     let cancelled = false
@@ -316,8 +376,16 @@ export default function App() {
           <button
             className={`nav-item ${navActivo === 'entrenamiento' ? 'nav-item-active' : ''}`}
             onClick={() => setNavActivo('entrenamiento')}
+            disabled={!canManageFormats}
           >
             Entrenar formatos
+          </button>
+          <button
+            className={`nav-item ${navActivo === 'administracion' ? 'nav-item-active' : ''}`}
+            onClick={() => setNavActivo('administracion')}
+            disabled={!isAdmin}
+          >
+            Administracion
           </button>
           <button
             className="nav-item nav-item-secondary"
@@ -328,24 +396,15 @@ export default function App() {
           </button>
         </nav>
 
-        <div className="sidebar-foot" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <div>
-            <span style={{ display: 'block' }}>{user.name}</span>
-            <span style={{ display: 'block', fontSize: '0.75rem', color: '#6b7280' }}>{user.email}</span>
+        <div className="sidebar-foot">
+          <div style={{ marginBottom: '10px' }}>
+            <span style={{ display: 'block', fontWeight: '700', color: '#fff' }}>{user.name}</span>
+            <span style={{ display: 'block', fontSize: '0.75rem', color: 'rgba(0, 240, 255, 0.7)' }}>{user.email}</span>
           </div>
           <button 
             onClick={handleLogout}
-            style={{ 
-              background: '#315efb', 
-              border: 'none', 
-              color: 'white', 
-              padding: '0.5rem', 
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontSize: '0.75rem',
-              marginTop: '0.5rem',
-              fontWeight: '500'
-            }}
+            className="btn-remove"
+            style={{ width: '100%', padding: '8px 12px', fontSize: '0.75rem' }}
           >
             Cerrar Sesión
           </button>
@@ -496,7 +555,7 @@ export default function App() {
           )}
 
           {navActivo === 'preview' && previewDisponible && (
-            <div ref={previewRef}>
+            <div ref={previewRef} className="preview-section-container">
               <PreviewTable preview={preview} cargando={previewLoading} />
             </div>
           )}
@@ -515,7 +574,41 @@ export default function App() {
           )}
 
           {navActivo === 'entrenamiento' && (
-            <TrainingPanel onUnauthorized={handleLogout} />
+            canManageFormats ? (
+              <TrainingPanel onUnauthorized={handleLogout} />
+            ) : (
+              <section className="step-card empty-state-card">
+                <div className="step-head">
+                  <div className="step-label"><span>07</span> Entrenamiento</div>
+                  <p>Este módulo requiere permisos administrativos de formatos.</p>
+                </div>
+                <div className="empty-state">
+                  <strong>Acceso restringido</strong>
+                  <p>Solicita el permiso de gestión de formatos para entrenar nuevas plantillas Excel.</p>
+                </div>
+              </section>
+            )
+          )}
+
+          {navActivo === 'administracion' && isAdmin && (
+            <AdminControlPanel
+              currentUser={user}
+              onUnauthorized={handleLogout}
+              onCurrentUserChange={handleCurrentUserChange}
+            />
+          )}
+
+          {navActivo === 'administracion' && !isAdmin && (
+            <section className="step-card empty-state-card">
+              <div className="step-head">
+                <div className="step-label"><span>10</span> Administracion</div>
+                <p>Este modulo es exclusivo para administradores.</p>
+              </div>
+              <div className="empty-state">
+                <strong>Sin permisos</strong>
+                <p>Inicia sesion con una cuenta administrador para gestionar usuarios.</p>
+              </div>
+            </section>
           )}
         </main>
 

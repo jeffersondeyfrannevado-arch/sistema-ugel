@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import UploadZone from './UploadZone'
 import { analizarFormatoExcel, guardarFormatoExcel, listarFormatosExcel } from '../services/api'
 
@@ -57,7 +57,7 @@ export default function TrainingPanel({ onUnauthorized }) {
 
   const headersPreview = useMemo(() => (analisis?.headers_detectados ?? []).slice(0, 18), [analisis])
 
-  const loadFormatos = async () => {
+  const loadFormatos = useCallback(async () => {
     setLoadingFormatos(true)
     try {
       const data = await listarFormatosExcel()
@@ -71,11 +71,15 @@ export default function TrainingPanel({ onUnauthorized }) {
     } finally {
       setLoadingFormatos(false)
     }
-  }
+  }, [onUnauthorized])
 
   useEffect(() => {
-    loadFormatos()
-  }, [])
+    const run = async () => {
+      await loadFormatos()
+    }
+
+    void run()
+  }, [loadFormatos])
 
   const handleAnalizar = async () => {
     if (!archivoEntrenamiento) return

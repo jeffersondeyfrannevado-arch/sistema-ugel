@@ -61,7 +61,7 @@ class MatriculaService
         'NOM_GENERADAS', 'NOM_APROBADAS', 'NOM_RECTIFICAR',
     ];
 
-    private const TIPOS_PUBLICOS = ['A1', 'A2', 'A4'];
+    private const TIPOS_PUBLICOS = ['A1', 'A2', 'A3', 'A4'];
 
     private const FORMATOS = [
         'SECUNDARIA' => [
@@ -144,6 +144,10 @@ class MatriculaService
                 $errores[] = $resultado['error'];
             }
         }
+
+        $registros = array_values(array_filter($registros, function (array $registro) {
+            return ($registro['MATRICULA_EN_PROCESO'] ?? 0) > 0;
+        }));
 
         $publicos = array_filter($registros, fn ($r) => $r['_modalidad'] === 'PUBLICO');
         $privados = array_filter($registros, fn ($r) => $r['_modalidad'] === 'PRIVADO');
@@ -237,34 +241,47 @@ class MatriculaService
         $sheet = $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray('', true, true, false);
 
-        $title = $this->normalizarPdfTexto((string) ($rows[0][0] ?? 'REPORTE DE MATRICULA'));
+        $title = (string) ($rows[0][0] ?? 'REPORTE DE MATRÍCULA');
         $totalRow = $rows[count($rows) - 1] ?? [];
-        $registros = max(0, count($rows) - 3);
+        
+        // Determinar modalidad a partir del título
+        $modalidad = str_contains(strtoupper($title), 'PUBLICO') ? 'PUBLICO' : 'PRIVADO';
 
-        $summaryLines = [
-            $title,
-            'Generado: ' . now()->format('Y-m-d H:i'),
-            'Archivo origen: ' . basename($fullPath),
-            'Registros incluidos: ' . $registros,
-            'Totales -> Matriculados: ' . ($totalRow[12] ?? 0) . ' | En proceso: ' . ($totalRow[14] ?? 0) . ' | Secciones: ' . ($totalRow[19] ?? 0),
-            '',
-            $this->formatPdfLine('COD MOD', 'INSTITUCION EDUCATIVA', 'MAT', 'PROC', 'SEC'),
-            str_repeat('-', 112),
-        ];
-
-        $detailLines = [];
-        foreach (array_slice($rows, 2, max(0, count($rows) - 3)) as $row) {
-            $detailLines[] = $this->formatPdfLine(
-                (string) ($row[6] ?? ''),
-                (string) ($row[8] ?? ''),
-                (string) ($row[12] ?? '0'),
-                (string) ($row[14] ?? '0'),
-                (string) ($row[19] ?? '0')
-            );
+        // Estructurar los ítems de las escuelas
+        $items = [];
+        $dataRows = array_slice($rows, 2, max(0, count($rows) - 3));
+        foreach ($dataRows as $row) {
+            $items[] = [
+                'cod_mod' => (string) ($row[6] ?? ''),
+                'nombre_ie' => (string) ($row[8] ?? ''),
+                'matriculados' => (int) ($row[12] ?? 0),
+                'en_proceso' => (int) ($row[14] ?? 0),
+                'secciones' => (int) ($row[19] ?? 0),
+            ];
         }
 
-        $allLines = array_merge($summaryLines, $detailLines);
-        $pdfContent = $this->buildSimplePdf($allLines);
+        $totales = [
+            'matriculados' => (int) ($totalRow[12] ?? 0),
+            'en_proceso' => (int) ($totalRow[14] ?? 0),
+            'secciones' => (int) ($totalRow[19] ?? 0),
+        ];
+
+        $fecha = now()->format('d/m/Y H:i');
+        $archivo_origen = basename($fullPath);
+        $total_registros = count($items);
+
+        // Generar el contenido del PDF usando la fachada de Dompdf
+        $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('pdf.reporte_matricula', compact(
+            'title',
+            'modalidad',
+            'items',
+            'totales',
+            'fecha',
+            'archivo_origen',
+            'total_registros'
+        ))->setPaper('a4', 'landscape');
+
+        $pdfContent = $pdf->output();
         $pdfName = pathinfo($fullPath, PATHINFO_FILENAME) . '.pdf';
 
         return [$pdfContent, $pdfName];
@@ -430,55 +447,83 @@ class MatriculaService
         ]);
         $sheet->getRowDimension(1)->setRowHeight(30);
 
+        // Write header values
         foreach ($cabeceras as $colIdx => $header) {
             $colLetra = Coordinate::stringFromColumnIndex($colIdx + 1);
-            $cell = $colLetra . '2';
-            $sheet->setCellValue($cell, $header);
+            $sheet->setCellValue($colLetra . '2', $header);
+        }
 
-            $bgColor = $modalidad === 'PUBLICO' ? 'DBEAFE' : 'EDE9FE';
-            $styleArr = [
-                'font' => ['bold' => true, 'size' => 9],
-                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgColor]],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
-                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D1D5DB']]],
-            ];
+        // Apply base header style to the range
+        $bgColor = $modalidad === 'PUBLICO' ? 'DBEAFE' : 'EDE9FE';
+        $sheet->getStyle("A2:{$ultimaColumna}2")->applyFromArray([
+            'font' => ['bold' => true, 'size' => 9],
+            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgColor]],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'wrapText' => true],
+            'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D1D5DB']]],
+        ]);
 
+        // Highlight specific header columns
+        foreach ($cabeceras as $colIdx => $header) {
             if ($this->esColumnaResaltada($header, $columnasResaltadas)) {
-                $styleArr['fill']['startColor']['rgb'] = $modalidad === 'PUBLICO' ? 'FEF08A' : 'FDE68A';
-                $styleArr['font']['color'] = ['rgb' => '92400E'];
+                $colLetra = Coordinate::stringFromColumnIndex($colIdx + 1);
+                $sheet->getStyle($colLetra . '2')->applyFromArray([
+                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $modalidad === 'PUBLICO' ? 'FEF08A' : 'FDE68A']],
+                    'font' => ['color' => ['rgb' => '92400E']],
+                ]);
             }
-
-            $sheet->getStyle($cell)->applyFromArray($styleArr);
-            $sheet->getColumnDimension($colLetra)->setAutoSize(true);
         }
 
         $sheet->getRowDimension(2)->setRowHeight(35);
 
+        $totalFilasCount = count($filas);
+        $ultimoDatoRow = $totalFilasCount + 2;
+
+        // Write all data values
         foreach ($filas as $rowIdx => $fila) {
             $excelRow = $rowIdx + 3;
-            $bgFila = $rowIdx % 2 === 0 ? 'FFFFFF' : ($modalidad === 'PUBLICO' ? 'EFF6FF' : 'F5F3FF');
-
             foreach ($camposOrdenados as $colIdx => $campo) {
                 $colLetra = Coordinate::stringFromColumnIndex($colIdx + 1);
                 $valor = $fila[$campo] ?? '';
                 $sheet->setCellValue($colLetra . $excelRow, $valor);
+            }
+        }
 
-                $styleArr = [
-                    'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgFila]],
-                    'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E5E7EB']]],
-                    'font' => ['size' => 9],
-                ];
+        // Apply base data styling to the entire data table range in one single call
+        if ($totalFilasCount > 0) {
+            $sheet->getStyle("A3:{$ultimaColumna}{$ultimoDatoRow}")->applyFromArray([
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E5E7EB']]],
+                'font' => ['size' => 9],
+            ]);
 
-                if ($campo === 'MATRICULA_EN_PROCESO') {
-                    $styleArr['fill']['startColor']['rgb'] = $valor > 0 ? 'FEF9C3' : 'FFFFFF';
-                    $styleArr['font']['bold'] = $valor > 0;
+            // Apply zebra row styling row by row (faster than cell by cell)
+            foreach ($filas as $rowIdx => $fila) {
+                $excelRow = $rowIdx + 3;
+                $bgFila = $rowIdx % 2 === 0 ? 'FFFFFF' : ($modalidad === 'PUBLICO' ? 'EFF6FF' : 'F5F3FF');
+                if ($bgFila !== 'FFFFFF') {
+                    $sheet->getStyle("A{$excelRow}:{$ultimaColumna}{$excelRow}")->applyFromArray([
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgFila]],
+                    ]);
+                }
+            }
 
-                    if ($valor > 10) {
-                        $styleArr['font']['color'] = ['rgb' => 'B45309'];
+            // Highlight MATRICULA_EN_PROCESO if > 0
+            $idxProceso = array_search('MATRICULA_EN_PROCESO', $camposOrdenados);
+            if ($idxProceso !== false) {
+                $colProceso = Coordinate::stringFromColumnIndex($idxProceso + 1);
+                foreach ($filas as $rowIdx => $fila) {
+                    $excelRow = $rowIdx + 3;
+                    $valor = (int) ($fila['MATRICULA_EN_PROCESO'] ?? 0);
+                    if ($valor > 0) {
+                        $styleProceso = [
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FEF9C3']],
+                            'font' => ['bold' => true],
+                        ];
+                        if ($valor > 10) {
+                            $styleProceso['font']['color'] = ['rgb' => 'B45309'];
+                        }
+                        $sheet->getStyle($colProceso . $excelRow)->applyFromArray($styleProceso);
                     }
                 }
-
-                $sheet->getStyle($colLetra . $excelRow)->applyFromArray($styleArr);
             }
         }
 
@@ -512,6 +557,7 @@ class MatriculaService
         $rutaCompleta = $dirSalida . '/' . $nombreArchivo;
 
         $writer = new Xlsx($spreadsheet);
+        $writer->setPreCalculateFormulas(false);
         $writer->save($rutaCompleta);
 
         return $nombreArchivo;
@@ -718,86 +764,4 @@ class MatriculaService
         return $headers;
     }
 
-    private function formatPdfLine(string $codMod, string $nombreIe, string $matriculados, string $enProceso, string $secciones): string
-    {
-        return sprintf(
-            "%-12s %-68s %8s %8s %8s",
-            $this->fitPdfText($codMod, 12),
-            $this->fitPdfText($nombreIe, 68),
-            $this->fitPdfText($matriculados, 8),
-            $this->fitPdfText($enProceso, 8),
-            $this->fitPdfText($secciones, 8)
-        );
-    }
-
-    private function fitPdfText(string $text, int $length): string
-    {
-        $text = $this->normalizarPdfTexto($text);
-
-        if (strlen($text) <= $length) {
-            return $text;
-        }
-
-        return substr($text, 0, max(0, $length - 3)) . '...';
-    }
-
-    private function normalizarPdfTexto(string $text): string
-    {
-        $text = $this->limpiarTexto($text);
-        $text = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $text) ?: $text;
-
-        return preg_replace('/[^\x20-\x7E]/', '', $text) ?? $text;
-    }
-
-    private function buildSimplePdf(array $lines): string
-    {
-        $maxLinesPerPage = 48;
-        $pages = array_chunk($lines, $maxLinesPerPage);
-        $objects = [];
-
-        $objects[] = "<< /Type /Catalog /Pages 2 0 R >>";
-        $kids = [];
-        $pageObjectNumbers = [];
-        $contentObjectNumbers = [];
-
-        $nextObjectNumber = 3;
-        foreach ($pages as $pageIndex => $pageLines) {
-            $pageObjectNumbers[$pageIndex] = $nextObjectNumber++;
-            $contentObjectNumbers[$pageIndex] = $nextObjectNumber++;
-            $kids[] = $pageObjectNumbers[$pageIndex] . " 0 R";
-        }
-
-        $objects[] = "<< /Type /Pages /Count " . count($pages) . " /Kids [" . implode(' ', $kids) . "] >>";
-
-        foreach ($pages as $pageIndex => $pageLines) {
-            $content = "BT\n/F1 9 Tf\n36 806 Td\n12 TL\n";
-            foreach ($pageLines as $line) {
-                $escaped = str_replace(['\\', '(', ')'], ['\\\\', '\\(', '\\)'], $line);
-                $content .= '(' . $escaped . ") Tj\nT*\n";
-            }
-            $content .= "ET";
-
-            $objects[] = "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] /Resources << /Font << /F1 << /Type /Font /Subtype /Type1 /BaseFont /Courier >> >> >> /Contents " . $contentObjectNumbers[$pageIndex] . " 0 R >>";
-            $objects[] = "<< /Length " . strlen($content) . " >>\nstream\n" . $content . "\nendstream";
-        }
-
-        $pdf = "%PDF-1.4\n";
-        $offsets = [0];
-        foreach ($objects as $index => $object) {
-            $offsets[] = strlen($pdf);
-            $pdf .= ($index + 1) . " 0 obj\n" . $object . "\nendobj\n";
-        }
-
-        $xrefOffset = strlen($pdf);
-        $pdf .= "xref\n0 " . (count($objects) + 1) . "\n";
-        $pdf .= "0000000000 65535 f \n";
-        for ($i = 1; $i <= count($objects); $i++) {
-            $pdf .= str_pad((string) $offsets[$i], 10, '0', STR_PAD_LEFT) . " 00000 n \n";
-        }
-
-        $pdf .= "trailer\n<< /Size " . (count($objects) + 1) . " /Root 1 0 R >>\n";
-        $pdf .= "startxref\n" . $xrefOffset . "\n%%EOF";
-
-        return $pdf;
-    }
 }

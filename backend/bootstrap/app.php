@@ -6,6 +6,9 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use App\Http\Middleware\AdminMiddleware;
+use App\Http\Middleware\EnsurePermissionMiddleware;
+use App\Services\SystemAlertService;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -15,6 +18,10 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->alias([
+            'admin' => AdminMiddleware::class,
+            'permission' => EnsurePermissionMiddleware::class,
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         $exceptions->render(function (\Throwable $e, Request $request) {
@@ -23,11 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             if ($e instanceof QueryException || $e instanceof \PDOException) {
+                app(SystemAlertService::class)->reportException($e, $request);
+
                 return response()->json([
                     'success' => false,
                     'mensaje' => 'La base de datos no esta disponible. Verifica que MySQL este encendido y que la conexion configurada en backend/.env sea correcta.',
                 ], Response::HTTP_SERVICE_UNAVAILABLE);
             }
+
+            app(SystemAlertService::class)->reportException($e, $request);
 
             return response()->json([
                 'success' => false,

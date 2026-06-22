@@ -11,15 +11,24 @@ function getHeaders(isFormData = false) {
   return headers
 }
 
+async function parseJsonResponse(res, defaultMessage) {
+  const data = await res.json()
+
+  if (!res.ok || data?.success === false) {
+    if (res.status === 401) throw new Error('No autorizado')
+    throw new Error(data?.mensaje || data?.message || defaultMessage)
+  }
+
+  return data
+}
+
 export async function login(email, password) {
   const res = await fetch(`${BASE_URL}/login`, {
     method: 'POST',
     headers: getHeaders(),
     body: JSON.stringify({ email, password }),
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.message || 'Error en login')
-  return data
+  return parseJsonResponse(res, 'Error en login')
 }
 
 export async function registerUser(name, email, password) {
@@ -28,9 +37,32 @@ export async function registerUser(name, email, password) {
     headers: getHeaders(),
     body: JSON.stringify({ name, email, password }),
   })
-  const data = await res.json()
-  if (!res.ok) throw new Error(data.message || 'Error en registro')
-  return data
+  return parseJsonResponse(res, 'Error en registro')
+}
+
+export async function getCurrentUser() {
+  const res = await fetch(`${BASE_URL}/user`, {
+    headers: getHeaders(),
+  })
+  return parseJsonResponse(res, 'No se pudo obtener el usuario')
+}
+
+export async function verifyMfaLogin(challengeId, code) {
+  const res = await fetch(`${BASE_URL}/login/mfa/verify`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ challenge_id: challengeId, code }),
+  })
+  return parseJsonResponse(res, 'No se pudo validar el codigo MFA')
+}
+
+export async function resendMfaCode(challengeId) {
+  const res = await fetch(`${BASE_URL}/login/mfa/resend`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ challenge_id: challengeId }),
+  })
+  return parseJsonResponse(res, 'No se pudo reenviar el codigo MFA')
 }
 
 export async function logout() {
@@ -41,7 +73,16 @@ export async function logout() {
   if (res.ok) {
     localStorage.removeItem('auth_token')
     localStorage.removeItem('user')
+    localStorage.removeItem('auth_expires_at')
   }
+}
+
+export async function refreshToken() {
+  const res = await fetch(`${BASE_URL}/token/refresh`, {
+    method: 'POST',
+    headers: getHeaders(),
+  })
+  return parseJsonResponse(res, 'No se pudo renovar la sesion')
 }
 
 export async function previewArchivo(archivo) {
@@ -54,12 +95,7 @@ export async function previewArchivo(archivo) {
     body: formData,
   })
 
-  const data = await res.json()
-  if (!res.ok || !data.success) {
-    if (res.status === 401) throw new Error('No autorizado')
-    throw new Error(data?.mensaje || 'No se pudo generar la vista previa')
-  }
-
+  const data = await parseJsonResponse(res, 'No se pudo generar la vista previa')
   return data.preview
 }
 
@@ -93,13 +129,7 @@ export async function listarFormatosExcel() {
   const res = await fetch(`${BASE_URL}/matricula/formatos`, {
     headers: getHeaders(),
   })
-
-  const data = await res.json()
-  if (!res.ok || !data.success) {
-    if (res.status === 401) throw new Error('No autorizado')
-    throw new Error(data?.mensaje || 'No se pudieron listar los formatos')
-  }
-
+  const data = await parseJsonResponse(res, 'No se pudieron listar los formatos')
   return data.formatos
 }
 
@@ -113,12 +143,7 @@ export async function analizarFormatoExcel(archivo) {
     body: formData,
   })
 
-  const data = await res.json()
-  if (!res.ok || !data.success) {
-    if (res.status === 401) throw new Error('No autorizado')
-    throw new Error(data?.mensaje || 'No se pudo analizar el formato')
-  }
-
+  const data = await parseJsonResponse(res, 'No se pudo analizar el formato')
   return data.analisis
 }
 
@@ -129,13 +154,157 @@ export async function guardarFormatoExcel(payload) {
     body: JSON.stringify(payload),
   })
 
-  const data = await res.json()
-  if (!res.ok || !data.success) {
-    if (res.status === 401) throw new Error('No autorizado')
-    throw new Error(data?.mensaje || 'No se pudo guardar el formato')
-  }
-
+  const data = await parseJsonResponse(res, 'No se pudo guardar el formato')
   return data.formato
+}
+
+export async function listarUsuariosAdmin(filters = {}) {
+  const query = new URLSearchParams(filters)
+  const res = await fetch(`${BASE_URL}/admin/users${query.toString() ? `?${query.toString()}` : ''}`, {
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudieron cargar los usuarios')
+  return data.usuarios
+}
+
+export async function crearUsuarioAdmin(payload) {
+  const res = await fetch(`${BASE_URL}/admin/users`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo crear el usuario')
+  return data.usuario
+}
+
+export async function actualizarUsuarioAdmin(userId, payload) {
+  const res = await fetch(`${BASE_URL}/admin/users/${userId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo actualizar el usuario')
+  return data.usuario
+}
+
+export async function alternarEstadoUsuarioAdmin(userId) {
+  const res = await fetch(`${BASE_URL}/admin/users/${userId}/toggle-status`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo cambiar el estado del usuario')
+  return data.usuario
+}
+
+export async function eliminarUsuarioAdmin(userId) {
+  const res = await fetch(`${BASE_URL}/admin/users/${userId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  })
+  await parseJsonResponse(res, 'No se pudo eliminar el usuario')
+}
+
+export async function obtenerDashboardAdmin(filters = {}) {
+  const query = new URLSearchParams(filters)
+  const res = await fetch(`${BASE_URL}/admin/dashboard${query.toString() ? `?${query.toString()}` : ''}`, {
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo cargar el dashboard administrativo')
+  return data.dashboard
+}
+
+export async function exportarDashboardAdmin(filters = {}, format = 'excel') {
+  const query = new URLSearchParams({ ...filters, format })
+  const res = await fetch(`${BASE_URL}/admin/dashboard/export?${query.toString()}`, {
+    headers: getHeaders(),
+  })
+  if (!res.ok) throw new Error('No se pudo exportar el dashboard')
+
+  const blob = await res.blob()
+  const extension = format === 'pdf' ? 'pdf' : 'xlsx'
+  downloadBlob(blob, `dashboard_admin_${new Date().toISOString().slice(0, 10)}.${extension}`)
+}
+
+export async function listarContenidosAdmin(filters = {}) {
+  const query = new URLSearchParams(filters)
+  const res = await fetch(`${BASE_URL}/admin/contents${query.toString() ? `?${query.toString()}` : ''}`, {
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudieron cargar los contenidos')
+  return data.contenidos
+}
+
+export async function crearContenidoAdmin(payload) {
+  const res = await fetch(`${BASE_URL}/admin/contents`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo crear el contenido')
+  return data.contenido
+}
+
+export async function actualizarContenidoAdmin(contentId, payload) {
+  const res = await fetch(`${BASE_URL}/admin/contents/${contentId}`, {
+    method: 'PUT',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo actualizar el contenido')
+  return data.contenido
+}
+
+export async function moderarContenidoAdmin(contentId, payload) {
+  const res = await fetch(`${BASE_URL}/admin/contents/${contentId}/moderate`, {
+    method: 'PATCH',
+    headers: getHeaders(),
+    body: JSON.stringify(payload),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo moderar el contenido')
+  return data.contenido
+}
+
+export async function eliminarContenidoAdmin(contentId) {
+  const res = await fetch(`${BASE_URL}/admin/contents/${contentId}`, {
+    method: 'DELETE',
+    headers: getHeaders(),
+  })
+  await parseJsonResponse(res, 'No se pudo eliminar el contenido')
+}
+
+export async function listarAuditoriaAdmin(filters = {}) {
+  const query = new URLSearchParams(filters)
+  const res = await fetch(`${BASE_URL}/admin/audit-logs${query.toString() ? `?${query.toString()}` : ''}`, {
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo cargar la auditoria')
+  return data.logs
+}
+
+export async function listarRespaldosAdmin() {
+  const res = await fetch(`${BASE_URL}/admin/backups`, {
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudieron cargar los respaldos')
+  return data.respaldos
+}
+
+export async function crearRespaldoAdmin() {
+  const res = await fetch(`${BASE_URL}/admin/backups`, {
+    method: 'POST',
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo generar el respaldo')
+  return data.respaldo
+}
+
+export async function restaurarRespaldoAdmin(backupId) {
+  const res = await fetch(`${BASE_URL}/admin/backups/${backupId}/restore`, {
+    method: 'POST',
+    headers: getHeaders(),
+  })
+  const data = await parseJsonResponse(res, 'No se pudo restaurar el respaldo')
+  return data
 }
 
 export async function descargarArchivo(rutaBase64, nombreArchivo) {
@@ -143,12 +312,7 @@ export async function descargarArchivo(rutaBase64, nombreArchivo) {
   if (!res.ok) throw new Error('No se pudo descargar el archivo')
 
   const blob = await res.blob()
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = nombreArchivo
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(blob, nombreArchivo)
 }
 
 export async function descargarPdf(rutaBase64, nombreArchivo) {
@@ -156,12 +320,7 @@ export async function descargarPdf(rutaBase64, nombreArchivo) {
   if (!res.ok) throw new Error('No se pudo descargar el PDF')
 
   const blob = await res.blob()
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = nombreArchivo.replace(/\.xlsx$/i, '.pdf')
-  a.click()
-  URL.revokeObjectURL(url)
+  downloadBlob(blob, nombreArchivo.replace(/\.xlsx$/i, '.pdf'))
 }
 
 export async function descargarZip() {
@@ -169,11 +328,14 @@ export async function descargarZip() {
   if (!res.ok) throw new Error('No se pudo generar el ZIP')
 
   const blob = await res.blob()
-  const url  = URL.createObjectURL(blob)
-  const a    = document.createElement('a')
-  a.href     = url
-  a.download = `matricula_${new Date().toISOString().slice(0, 10)}.zip`
-  a.click()
+  downloadBlob(blob, `matricula_${new Date().toISOString().slice(0, 10)}.zip`)
+}
+
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
   a.click()
   URL.revokeObjectURL(url)
 }
