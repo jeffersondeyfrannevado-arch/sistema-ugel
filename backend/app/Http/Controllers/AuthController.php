@@ -9,6 +9,9 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use App\Notifications\PasswordResetNotification;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -244,5 +247,116 @@ class AuthController extends Controller
         $expiration = config('sanctum.expiration');
 
         return $expiration ? now()->addMinutes((int) $expiration) : null;
+    }
+
+    public function forgotPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|string|email|exists:users,email',
+        ]);
+
+        $email = strtolower(trim($request->email));
+        $user = User::where('email', $email)->first();
+
+        if (!$user || !$user->is_active) {
+            return response()->json([
+                'message' => 'El usuario no está activo o no existe.',
+            ], Response::HTTP_FORBIDDEN);
+        }
+
+        $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        $expiresMinutes = 15;
+
+        DB::table('password_reset_tokens')->updateOrInsert(
+            ['email' => $email],
+            [
+                'token' => Hash::make($code),
+                'created_at' => now()
+            ]
+        );
+
+        // Dynamically adjust SMTP configuration based on user type (similar to MFA challenge service)
+        $username = null;
+        $password = null;
+
+        if ($email === 'jeffersondeyfrannevado@gmail.com') {
+            $username = env('MAIL_USERNAME_SUPER_ADMIN');
+            $password = env('MAIL_PASSWORD_SUPER_ADMIN');
+        } elseif ($email === 'sanjuanmiraflores67@gmail.com') {
+            $username = env('MAIL_USERNAME_SUB_ADMIN');
+            $password = env('MAIL_PASSWORD_SUB_ADMIN');
+        } elseif ($email === 'en1774121@gmail.com') {
+            $username = env('MAIL_USERNAME_CUSTOM_ADMIN');
+            $password = env('MAIL_PASSWORD_CUSTOM_ADMIN');
+        }
+
+        if ($username && $password) {
+            config([
+                'mail.mailers.smtp.username' => $username,
+                'mail.mailers.smtp.password' => $password,
+                'mail.from.address' => $username,
+            ]);
+            Mail::forgetMailers();
+        }
+
+        $user->notify(new PasswordResetNotification($code, $expiresMinutes));
+
+        $this->auditLogService->record($user, 'auth.password.reset_requested', $user, [], $request);
+
+        return response()->json([
+            'message' => 'Se envio el codigo de recuperacion al correo registrado.',
+        ]);
+    }
+
+    public function resetPassword(Request $request)
+    {
+        $request->validate([
+            'email' => 'required|string|email|exists:users,email',
+            'code' => 'required|string|min:6|max:6',
+            'password' => 'required|string|min:8',
+        ]);
+
+        $email = strtolower(trim($request->email));
+        $record = DB::table('password_reset_tokens')->where('email', $email)->first();
+
+        if (!$record) {
+            return response()->json([
+                'message' => 'No se ha solicitado una recuperación de contraseña para este correo.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        // Expire token after 15 minutes
+        if (now()->subMinutes(15)->gt($record->created_at)) {
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+            return response()->json([
+                'message' => 'El código de recuperación ha expirado.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        if (!Hash::check($request->code, $record->token)) {
+            return response()->json([
+                'message' => 'Código de recuperación inválido.',
+            ], Response::HTTP_UNPROCESSABLE_ENTITY);
+        }
+
+        $user = User::where('email', $email)->first();
+        if ($user) {
+            $user->password = Hash::make($request->password);
+            $user->failed_login_attempts = 0;
+            $user->locked_until = null;
+            $user->save();
+
+            DB::table('password_reset_tokens')->where('email', $email)->delete();
+
+            $this->auditLogService->record($user, 'auth.password.reset_success', $user, [], $request);
+
+            return response()->json([
+                'message' => 'Contraseña restablecida exitosamente.',
+            ]);
+        }
+
+        return response()->json([
+            'message' => 'Error al restablecer la contraseña.',
+        ], Response::HTTP_INTERNAL_SERVER_ERROR);
     }
 }

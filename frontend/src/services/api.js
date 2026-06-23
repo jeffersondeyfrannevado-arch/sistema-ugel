@@ -339,3 +339,21 @@ function downloadBlob(blob, fileName) {
   a.click()
   URL.revokeObjectURL(url)
 }
+
+export async function sendForgotPasswordCode(email) {
+  const res = await fetch(`${BASE_URL}/password/forgot`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ email }),
+  })
+  return parseJsonResponse(res, 'No se pudo enviar el código de recuperación')
+}
+
+export async function resetPassword(email, code, password) {
+  const res = await fetch(`${BASE_URL}/password/reset`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ email, code, password }),
+  })
+  return parseJsonResponse(res, 'No se pudo restablecer la contraseña')
+}

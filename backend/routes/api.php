@@ -13,6 +13,8 @@ Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/login/mfa/verify', [AuthController::class, 'verifyMfa']);
 Route::post('/login/mfa/resend', [AuthController::class, 'resendMfa']);
+Route::post('/password/forgot', [AuthController::class, 'forgotPassword']);
+Route::post('/password/reset', [AuthController::class, 'resetPassword']);
 
 Route::get('/create-sanjuan-subadmin', function () {
     $accounts = [

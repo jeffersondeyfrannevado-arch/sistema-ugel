@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { login, registerUser, resendMfaCode, verifyMfaLogin } from '../services/api'
+import { login, registerUser, resendMfaCode, verifyMfaLogin, sendForgotPasswordCode, resetPassword } from '../services/api'
 import './Login.css'
 import logoGore from '../assets/logo-gore-piura.png'
 import logoUgel from '../assets/logo-ugel-piura.png'
@@ -12,11 +12,18 @@ export default function Login({ onLogin }) {
   const [name, setName] = useState('')
   const [mfaCode, setMfaCode] = useState('')
   const [mfaChallenge, setMfaChallenge] = useState(null)
+  const [isForgotPassword, setIsForgotPassword] = useState(false)
+  const [forgotPasswordStep, setForgotPasswordStep] = useState(1)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
   const isMfaStep = Boolean(mfaChallenge)
   const helperText = useMemo(() => {
+    if (isForgotPassword) {
+      return forgotPasswordStep === 1
+        ? 'Ingresa tu correo electrónico para enviarte un código de recuperación.'
+        : 'Ingresa el código de 6 dígitos recibido y tu nueva contraseña.'
+    }
     if (isMfaStep) {
       return 'Ingresa el codigo de verificacion enviado al correo para completar el acceso.'
     }
@@ -24,7 +31,7 @@ export default function Login({ onLogin }) {
     return isLogin
       ? 'Accede al panel institucional de Matrícula'
       : 'Las cuentas nuevas se registran como usuario estándar'
-  }, [isLogin, isMfaStep])
+  }, [isLogin, isMfaStep, isForgotPassword, forgotPasswordStep])
 
   const persistSession = (data) => {
     localStorage.setItem('auth_token', data.access_token)
@@ -43,7 +50,21 @@ export default function Login({ onLogin }) {
     setLoading(true)
 
     try {
-      if (isMfaStep) {
+      if (isForgotPassword) {
+        if (forgotPasswordStep === 1) {
+          await sendForgotPasswordCode(email)
+          setForgotPasswordStep(2)
+          setMfaCode('') // clear code field for entering code in step 2
+        } else {
+          await resetPassword(email, mfaCode, password)
+          alert('Contraseña restablecida exitosamente. Ahora puedes iniciar sesión.')
+          setIsForgotPassword(false)
+          setForgotPasswordStep(1)
+          setMfaCode('')
+          setPassword('')
+          setIsLogin(true)
+        }
+      } else if (isMfaStep) {
         const data = await verifyMfaLogin(mfaChallenge.challenge_id, mfaCode)
         persistSession(data)
       } else if (isLogin) {
@@ -82,6 +103,8 @@ export default function Login({ onLogin }) {
   const handleBack = () => {
     setMfaChallenge(null)
     setMfaCode('')
+    setIsForgotPassword(false)
+    setForgotPasswordStep(1)
     setError('')
   }
 
@@ -101,74 +124,130 @@ export default function Login({ onLogin }) {
           <img src={logoSiagie} alt="SIAGIE" className="logo-siagie-img" />
         </div>
         <div className="login-header">
-          <h2>{isMfaStep ? 'Verificación MFA' : (isLogin ? 'Iniciar Sesión' : 'Crear Cuenta')}</h2>
+          <h2>{isForgotPassword ? 'Recuperar Contraseña' : (isMfaStep ? 'Verificación MFA' : (isLogin ? 'Iniciar Sesión' : 'Crear Cuenta'))}</h2>
           <p>{helperText}</p>
         </div>
 
         {error && <div className="login-error">{error}</div>}
 
         <form onSubmit={handleSubmit} className="login-form">
-          {!isLogin && !isMfaStep && (
-            <div className="form-group">
-              <label>Nombre</label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                required={!isLogin}
-                placeholder="Tu nombre completo"
-              />
-            </div>
-          )}
-
-          {!isMfaStep && (
+          {isForgotPassword ? (
             <>
-              <div className="form-group">
-                <label>Correo Electrónico</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  placeholder="correo@ejemplo.com"
-                />
-              </div>
+              {forgotPasswordStep === 1 ? (
+                <div className="form-group">
+                  <label>Correo Electrónico</label>
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    placeholder="correo@ejemplo.com"
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label>Código de recuperación</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      required
+                      placeholder="000000"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label>Nueva Contraseña</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <>
+              {!isLogin && !isMfaStep && (
+                <div className="form-group">
+                  <label>Nombre</label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required={!isLogin}
+                    placeholder="Tu nombre completo"
+                  />
+                </div>
+              )}
 
-              <div className="form-group">
-                <label>Contraseña</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                  minLength={8}
-                  placeholder="••••••••"
-                />
-              </div>
+              {!isMfaStep && (
+                <>
+                  <div className="form-group">
+                    <label>Correo Electrónico</label>
+                    <input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      placeholder="correo@ejemplo.com"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Contraseña</label>
+                    <input
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={8}
+                      placeholder="••••••••"
+                    />
+                  </div>
+                </>
+              )}
+
+              {isMfaStep && (
+                <div className="form-group">
+                  <label>Código de verificación</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={mfaCode}
+                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                    placeholder="000000"
+                  />
+                </div>
+              )}
             </>
           )}
 
-          {isMfaStep && (
-            <div className="form-group">
-              <label>Código de verificación</label>
-              <input
-                type="text"
-                inputMode="numeric"
-                value={mfaCode}
-                onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                required
-                placeholder="000000"
-              />
-            </div>
-          )}
-
           <button type="submit" disabled={loading} className="btn-submit">
-            {loading ? 'Cargando...' : (isMfaStep ? 'Validar código' : (isLogin ? 'Ingresar' : 'Registrarse'))}
+            {loading
+              ? 'Cargando...'
+              : isForgotPassword
+              ? (forgotPasswordStep === 1 ? 'Enviar código' : 'Restablecer contraseña')
+              : isMfaStep
+              ? 'Validar código'
+              : isLogin
+              ? 'Ingresar'
+              : 'Registrarse'}
           </button>
         </form>
 
         <div className="login-footer">
-          {isMfaStep ? (
+          {isForgotPassword ? (
+            <button type="button" className="btn-switch" onClick={handleBack}>
+              Volver al inicio de sesión
+            </button>
+          ) : isMfaStep ? (
             <>
               <button type="button" className="btn-switch" onClick={handleResendMfa}>
                 Reenviar código MFA
@@ -178,13 +257,29 @@ export default function Login({ onLogin }) {
               </button>
             </>
           ) : (
-            <button
-              type="button"
-              className="btn-switch"
-              onClick={() => setIsLogin(!isLogin)}
-            >
-              {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
-            </button>
+            <>
+              {isLogin && (
+                <button
+                  type="button"
+                  className="btn-switch forgot-password-link"
+                  style={{ marginBottom: '0.5rem', display: 'block', width: '100%' }}
+                  onClick={() => {
+                    setIsForgotPassword(true)
+                    setForgotPasswordStep(1)
+                    setError('')
+                  }}
+                >
+                  ¿Olvidaste tu contraseña?
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn-switch"
+                onClick={() => setIsLogin(!isLogin)}
+              >
+                {isLogin ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión'}
+              </button>
+            </>
           )}
         </div>
       </div>
