@@ -357,3 +357,28 @@ export async function resetPassword(email, code, password) {
   })
   return parseJsonResponse(res, 'No se pudo restablecer la contraseña')
 }
+
+export async function exportarNexusColegio(colegioNombre) {
+  const res = await fetch(`${BASE_URL}/matricula/nexus/exportar-colegio`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ colegio: colegioNombre }),
+  })
+  if (!res.ok) throw new Error('No se pudo exportar el colegio NEXUS')
+  const blob = await res.blob()
+  const safeName = colegioNombre.replace(/[^A-Za-z0-9_-]/g, '_')
+  downloadBlob(blob, `NEXUS - ${safeName}.xlsx`)
+}
+
+export async function exportarMatriculaColegio(colegioCodigo) {
+  const res = await fetch(`${BASE_URL}/matricula/colegio/exportar`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ colegio: colegioCodigo }),
+  })
+  if (!res.ok) throw new Error('No se pudo exportar el reporte de matrícula')
+  const blob = await res.blob()
+  const safeCode = colegioCodigo.replace(/[^A-Za-z0-9_-]/g, '_')
+  downloadBlob(blob, `REPORTE - I.E. ${safeCode}.xlsx`)
+}
+

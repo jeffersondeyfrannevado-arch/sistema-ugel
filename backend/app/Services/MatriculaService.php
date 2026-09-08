@@ -764,4 +764,212 @@ class MatriculaService
         return $headers;
     }
 
+    /**
+     * Extrae lista de colegios y estadísticas para el módulo de Matrícula y Niveles.
+     */
+    public function procesarColegiosMatricula($archivo): array
+    {
+        $filePath = is_string($archivo) ? $archivo : $archivo->getRealPath();
+        $spreadsheet = IOFactory::load($filePath);
+        $sheet = $spreadsheet->getActiveSheet();
+        $rows = $sheet->toArray(null, true, true, false);
+
+        // Buscar fila con CÓDIGO IE o CÓDIGO MODULAR
+        $headerRowIdx = -1;
+        foreach ($rows as $idx => $row) {
+            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
+            if (str_contains($rowStr, 'CÓDIGO IE') || str_contains($rowStr, 'CODIGO IE') || str_contains($rowStr, 'CENTRO EDUCATIVO')) {
+                $headerRowIdx = $idx;
+                break;
+            }
+        }
+        if ($headerRowIdx === -1) {
+            $headerRowIdx = 5; // Fila 6 (índice 5)
+        }
+
+        $headers = $rows[$headerRowIdx] ?? [];
+        $colsMap = [];
+        foreach ($headers as $cIdx => $val) {
+            if ($val !== null && trim((string)$val) !== '') {
+                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+            }
+        }
+
+        $ieColIdx = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 5; // Col F
+        $nombreColIdx = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 6; // Col G
+        $nivelColIdx = $colsMap['NIVEL EDUCATIVO'] ?? 1; // Col B
+        $codModColIdx = $colsMap['CÓDIGO MODULAR'] ?? $colsMap['CODIGO MODULAR'] ?? 3; // Col D
+
+        $colegios = [];
+
+        for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
+            $row = $rows[$i];
+            if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) {
+                continue;
+            }
+
+            $codIe = trim((string)($row[$ieColIdx] ?? ''));
+            $nombreIe = trim((string)($row[$nombreColIdx] ?? ''));
+            $nivel = trim((string)($row[$nivelColIdx] ?? ''));
+            $codMod = trim((string)($row[$codModColIdx] ?? ''));
+
+            if ($codIe === '' && $nombreIe === '') {
+                continue;
+            }
+
+            $key = $codIe !== '' ? $codIe : ($nombreIe !== '' ? $nombreIe : $codMod);
+
+            if (!isset($colegios[$key])) {
+                $colegios[$key] = [
+                    'codigo_ie' => $codIe,
+                    'nombre' => $nombreIe,
+                    'codmod' => $codMod,
+                    'niveles' => [],
+                    'total_filas' => 0,
+                ];
+            }
+
+            if ($nivel !== '' && !in_array($nivel, $colegios[$key]['niveles'], true)) {
+                $colegios[$key]['niveles'][] = $nivel;
+            }
+
+            $colegios[$key]['total_filas']++;
+        }
+
+        return [
+            'tipo' => 'MATRICULA',
+            'total_colegios' => count($colegios),
+            'colegios' => array_values($colegios),
+        ];
+    }
+
+    /**
+     * Genera el Excel de Matrícula para un colegio específico (ej. REPORTE - I.E. 070.xlsx)
+     * manteniendo las 5 secciones de colores (Blanco, Amarillo Claro, Amarillo Resaltado, Verde Claro, Rosa Claro).
+     */
+    public function exportarColegioMatricula($fileSource, string $codigoColegio): array
+    {
+        $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
+        $sourceSpreadsheet = IOFactory::load($filePath);
+        $sourceSheet = $sourceSpreadsheet->getActiveSheet();
+        $rows = $sourceSheet->toArray(null, true, true, false);
+
+        // Buscar fila de cabecera principal
+        $headerRowIdx = -1;
+        foreach ($rows as $idx => $row) {
+            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
+            if (str_contains($rowStr, 'CÓDIGO IE') || str_contains($rowStr, 'CODIGO IE') || str_contains($rowStr, 'CENTRO EDUCATIVO')) {
+                $headerRowIdx = $idx;
+                break;
+            }
+        }
+        if ($headerRowIdx === -1) {
+            $headerRowIdx = 5; // Fila 6
+        }
+
+        $headers = $rows[$headerRowIdx] ?? [];
+        $colsMap = [];
+        foreach ($headers as $cIdx => $val) {
+            if ($val !== null && trim((string)$val) !== '') {
+                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+            }
+        }
+
+        $ieColIdx = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 5;
+        $nombreColIdx = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 6;
+
+        // Filtrar filas del colegio
+        $filteredRows = [];
+        for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
+            $row = $rows[$i];
+            if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) {
+                continue;
+            }
+
+            $codIe = trim((string)($row[$ieColIdx] ?? ''));
+            $nombreIe = trim((string)($row[$nombreColIdx] ?? ''));
+
+            if (
+                strcasecmp($codIe, $codigoColegio) === 0 ||
+                strcasecmp($nombreIe, $codigoColegio) === 0 ||
+                str_contains(strtoupper($codIe), strtoupper($codigoColegio)) ||
+                str_contains(strtoupper($nombreIe), strtoupper($codigoColegio))
+            ) {
+                $filteredRows[] = $row;
+            }
+        }
+
+        // Crear hoja formateada con las 5 secciones de colores
+        $outSpreadsheet = new Spreadsheet();
+        $outSheet = $outSpreadsheet->getActiveSheet();
+        $outSheet->setTitle('REPORTE - I.E. ' . substr($codigoColegio, 0, 15));
+
+        // Copiar las filas de estructura (0 a $headerRowIdx)
+        for ($r = 0; $r <= $headerRowIdx; $r++) {
+            $rowValues = $rows[$r] ?? [];
+            for ($c = 0; $c < count($rowValues); $c++) {
+                $colLetter = Coordinate::stringFromColumnIndex($c + 1);
+                $outSheet->setCellValue("{$colLetter}" . ($r + 1), $rowValues[$c] ?? '');
+            }
+        }
+
+        // Aplicar estilos de sección a las cabeceras (Fila 5 y 6)
+        // 1. DETALLE DE IIEE (Cols A - O): Blanco
+        // 2. MATRICULA Y GRADOS (Cols P - AP): Amarillo Claro (#FFF2CC)
+        // 3. INFORMACION 2025 (Cols AR - AV): Amarillo (#FFFF00)
+        // 4. PLAZAS Y BOLSA DE HORAS (Cols AW - BK): Verde Claro (#D9EAD3)
+        // 5. FECHA BASES (Cols BL - BO): Rosa Claro (#F4CCCC)
+
+        $applySectionStyle = function ($range, $bgColor, $textColor = '000000', $bold = true) use ($outSheet) {
+            $outSheet->getStyle($range)->applyFromArray([
+                'font' => ['bold' => $bold, 'color' => ['rgb' => $textColor], 'size' => 9],
+                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgColor]],
+                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'B0C4DE']]],
+            ]);
+        };
+
+        $applySectionStyle('A5:O6', 'FFFFFF', '000000');
+        $applySectionStyle('F6:F6', 'FFFF00', '000000'); // CÓDIGO IE en amarillo
+        $applySectionStyle('P5:AP6', 'FFF2CC', '000000');
+        $applySectionStyle('AR5:AV6', 'FFFF00', '000000');
+        $applySectionStyle('AU6:AV6', 'FFFF00', '000000'); // COMENTARIO en amarillo
+        $applySectionStyle('AW5:BK6', 'D9EAD3', '000000');
+        $applySectionStyle('BL5:BO6', 'F4CCCC', '000000');
+
+        // Agregar filas filtradas
+        $currentOutRow = $headerRowIdx + 2;
+        foreach ($filteredRows as $rData) {
+            for ($c = 0; $c < count($rData); $c++) {
+                $colLetter = Coordinate::stringFromColumnIndex($c + 1);
+                $outSheet->setCellValue("{$colLetter}{$currentOutRow}", $rData[$c] ?? '');
+            }
+
+            $outSheet->getStyle("A{$currentOutRow}:BO{$currentOutRow}")->applyFromArray([
+                'font' => ['size' => 9, 'name' => 'Calibri'],
+                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E0E0E0']]],
+            ]);
+            $currentOutRow++;
+        }
+
+        $outputDir = storage_path('app/matricula_colegios');
+        if (!is_dir($outputDir)) {
+            mkdir($outputDir, 0755, true);
+        }
+
+        $safeCode = preg_replace('/[^A-Za-z0-9_-]/', '_', $codigoColegio);
+        $filename = "REPORTE - I.E. {$safeCode}.xlsx";
+        $fullPath = "{$outputDir}/{$filename}";
+
+        $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($outSpreadsheet);
+        $writer->save($fullPath);
+
+        return [
+            'success' => true,
+            'filename' => $filename,
+            'path' => $fullPath,
+            'registros' => count($filteredRows),
+        ];
+    }
 }
+

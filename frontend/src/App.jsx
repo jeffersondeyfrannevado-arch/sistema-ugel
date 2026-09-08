@@ -7,6 +7,8 @@ import StatsCard from './components/StatsCard'
 import Login from './components/Login'
 import TrainingPanel from './components/TrainingPanel'
 import AdminControlPanel from './components/AdminControlPanel'
+import NexusPanel from './components/NexusPanel'
+import MatriculaNivelesPanel from './components/MatriculaNivelesPanel'
 import { previewArchivo, procesarArchivo, logout, getCurrentUser, refreshToken } from './services/api'
 import './App.css'
 
@@ -197,7 +199,14 @@ export default function App() {
       const data = await procesarArchivo(archivo, columnasResaltadas)
       setResultado(data)
       setEstado('listo')
-      setNavActivo('dashboard')
+
+      if (data.tipo_excel === 'NEXUS') {
+        setNavActivo('nexus')
+      } else if (data.tipo_excel === 'MATRICULA') {
+        setNavActivo('matricula')
+      } else {
+        setNavActivo('dashboard')
+      }
       setTimeout(() => dashboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
     } catch (e) {
       if (e.message === 'No autorizado') {
@@ -350,7 +359,21 @@ export default function App() {
             className={`nav-item ${navActivo === 'procesamiento' ? 'nav-item-active' : ''}`}
             onClick={() => scrollTo(heroRef, 'procesamiento')}
           >
-            Procesamiento de Matrícula
+            Procesamiento de Archivos
+          </button>
+          <button
+            className={`nav-item ${navActivo === 'nexus' ? 'nav-item-active' : ''}`}
+            onClick={() => dashboardDisponible && setNavActivo('nexus')}
+            disabled={!dashboardDisponible}
+          >
+            Apartado NEXUS
+          </button>
+          <button
+            className={`nav-item ${navActivo === 'matricula' ? 'nav-item-active' : ''}`}
+            onClick={() => dashboardDisponible && setNavActivo('matricula')}
+            disabled={!dashboardDisponible}
+          >
+            Apartado Matrícula
           </button>
           <button
             className={`nav-item ${navActivo === 'dashboard' ? 'nav-item-active' : ''}`}
@@ -496,6 +519,14 @@ export default function App() {
                 </div>
               )}
             </>
+          )}
+
+          {navActivo === 'nexus' && dashboardDisponible && (
+            <NexusPanel resultado={resultado} />
+          )}
+
+          {navActivo === 'matricula' && dashboardDisponible && (
+            <MatriculaNivelesPanel resultado={resultado} />
           )}
 
           {navActivo === 'dashboard' && dashboardDisponible && (
