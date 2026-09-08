@@ -5,9 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Services\MatriculaService;
 use App\Services\ExcelFormatTrainingService;
-use App\Services\ExcelFormatDetectorService;
-use App\Services\NexusService;
-use Illuminate\Support\Facades\Storage;
+use App\Services\FiltradoColegioService;
 use ZipArchive;
 
 class MatriculaController extends Controller
@@ -15,8 +13,7 @@ class MatriculaController extends Controller
     public function __construct(
         protected MatriculaService $service,
         protected ExcelFormatTrainingService $trainingService,
-        protected ExcelFormatDetectorService $detectorService,
-        protected NexusService $nexusService
+        protected FiltradoColegioService $filtradoColegioService
     ) {}
 
     public function preview(Request $request)
@@ -26,29 +23,9 @@ class MatriculaController extends Controller
         ]);
 
         try {
-            $archivo = $request->file('archivo');
-            $deteccion = $this->detectorService->detectarTipo($archivo);
-
-            if ($deteccion['tipo'] === ExcelFormatDetectorService::TIPO_NEXUS) {
-                $nexusRes = $this->nexusService->procesarNexus($archivo);
-                return response()->json([
-                    'success' => true,
-                    'tipo_excel' => 'NEXUS',
-                    'deteccion' => $deteccion,
-                    'preview' => [
-                        'headers' => $nexusRes['headers'] ?? [],
-                        'rows' => array_slice($nexusRes['colegios'], 0, 10),
-                        'total' => count($nexusRes['colegios']),
-                    ],
-                    'nexus_data' => $nexusRes,
-                ]);
-            }
-
             return response()->json([
                 'success' => true,
-                'tipo_excel' => 'MATRICULA',
-                'deteccion' => $deteccion,
-                'preview' => $this->service->previewArchivo($archivo),
+                'preview' => $this->service->previewArchivo($request->file('archivo')),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -72,46 +49,15 @@ class MatriculaController extends Controller
         $columnasResaltadas = $request->input('columnas_resaltadas', []);
 
         try {
-            $deteccion = $this->detectorService->detectarTipo($archivo);
-
-            if ($deteccion['tipo'] === ExcelFormatDetectorService::TIPO_NEXUS) {
-                $nexusRes = $this->nexusService->procesarNexus($archivo);
-
-                // Guardar copia temporal del archivo cargado para posteriores descargas de colegios
-                $tempPath = storage_path('app/temp_nexus_uploaded.xlsx');
-                copy($archivo->getRealPath(), $tempPath);
-
-                return response()->json([
-                    'success' => true,
-                    'tipo_excel' => 'NEXUS',
-                    'mensaje' => 'Archivo NEXUS procesado correctamente',
-                    'deteccion' => $deteccion,
-                    'estadisticas' => $nexusRes['estadisticas'],
-                    'colegios' => $nexusRes['colegios'],
-                    'archivos' => [],
-                    'errores' => [],
-                ]);
-            }
-
-            // Procesar como Matrícula
             $resultado = $this->service->procesarArchivo($archivo, $columnasResaltadas);
-            $colegiosRes = $this->service->procesarColegiosMatricula($archivo);
-
-            $tempPathMat = storage_path('app/temp_matricula_uploaded.xlsx');
-            copy($archivo->getRealPath(), $tempPathMat);
-
             return response()->json([
                 'success' => true,
-                'tipo_excel' => 'MATRICULA',
-                'mensaje' => 'Archivo de Matrícula procesado correctamente',
-                'deteccion' => $deteccion,
+                'mensaje' => 'Archivo procesado correctamente',
                 'nivel' => $resultado['nivel'] ?? null,
                 'estadisticas' => $resultado['estadisticas'],
-                'colegios' => $colegiosRes['colegios'] ?? [],
                 'archivos' => $resultado['archivos'],
                 'errores' => $resultado['errores'],
             ]);
-
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
@@ -121,50 +67,62 @@ class MatriculaController extends Controller
     }
 
     /**
-     * Endpoint para exportar/descargar el Excel NEXUS de un colegio específico.
+     * Endpoint dedicado para el Módulo Aislado de Filtrado por Colegio.
      */
-    public function exportarNexusColegio(Request $request)
+    public function procesarFiltradoColegio(Request $request)
     {
         $request->validate([
-            'colegio' => 'required|string',
+            'archivo' => 'required|file|mimes:xlsx,xls|max:20480',
         ]);
 
-        $colegio = $request->input('colegio');
-        $uploadedPath = storage_path('app/temp_nexus_uploaded.xlsx');
-
-        if (!file_exists($uploadedPath)) {
-            return response()->json(['error' => 'No hay un archivo NEXUS cargado recientemente.'], 404);
-        }
-
         try {
-            $exportRes = $this->nexusService->exportarColegioNexus($uploadedPath, $colegio);
-            return response()->download($exportRes['path'], $exportRes['filename']);
+            $archivo = $request->file('archivo');
+            $resultado = $this->filtradoColegioService->procesarArchivoColegios($archivo);
+
+            // Guardar copia temporal aislada para exportación posterior
+            $tempPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
+            copy($archivo->getRealPath(), $tempPath);
+
+            return response()->json([
+                'success' => true,
+                'data' => $resultado
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al exportar NEXUS: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'mensaje' => 'Error al procesar archivo para filtrado: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
     /**
-     * Endpoint para exportar/descargar el Excel de Matrícula de un colegio específico.
+     * Endpoint dedicado para exportar/descargar el Excel por colegio (NEXUS o REPORTE MATRICULA).
      */
-    public function exportarMatriculaColegio(Request $request)
+    public function exportarFiltradoColegio(Request $request)
     {
         $request->validate([
             'colegio' => 'required|string',
+            'tipo_excel' => 'required|string',
         ]);
 
         $colegio = $request->input('colegio');
-        $uploadedPath = storage_path('app/temp_matricula_uploaded.xlsx');
+        $tipoExcel = $request->input('tipo_excel');
+        $uploadedPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
 
         if (!file_exists($uploadedPath)) {
-            return response()->json(['error' => 'No hay un archivo de Matrícula cargado recientemente.'], 404);
+            return response()->json(['error' => 'No hay un archivo cargado recientemente en la pestaña de filtrado.'], 404);
         }
 
         try {
-            $exportRes = $this->service->exportarColegioMatricula($uploadedPath, $colegio);
-            return response()->download($exportRes['path'], $exportRes['filename']);
+            if ($tipoExcel === 'NEXUS') {
+                $res = $this->filtradoColegioService->exportarNexusColegio($uploadedPath, $colegio);
+            } else {
+                $res = $this->filtradoColegioService->exportarMatriculaColegio($uploadedPath, $colegio);
+            }
+
+            return response()->download($res['path'], $res['filename']);
         } catch (\Exception $e) {
-            return response()->json(['error' => 'Error al exportar Matrícula: ' . $e->getMessage()], 500);
+            return response()->json(['error' => 'Error al exportar archivo por colegio: ' . $e->getMessage()], 500);
         }
     }
 

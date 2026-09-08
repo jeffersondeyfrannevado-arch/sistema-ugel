@@ -7,6 +7,7 @@ import StatsCard from './components/StatsCard'
 import Login from './components/Login'
 import TrainingPanel from './components/TrainingPanel'
 import AdminControlPanel from './components/AdminControlPanel'
+import FiltradoColegiosModule from './components/FiltradoColegiosModule'
 import { previewArchivo, procesarArchivo, logout, getCurrentUser, refreshToken } from './services/api'
 import './App.css'
 
@@ -369,6 +370,13 @@ export default function App() {
           </button>
 
           <button
+            className={`nav-item ${navActivo === 'filtrado-colegios' ? 'nav-item-active' : ''}`}
+            onClick={() => setNavActivo('filtrado-colegios')}
+          >
+            Filtrado de Colegios (NEXUS y REPORTE)
+          </button>
+
+          <button
             className="nav-item nav-item-secondary"
             onClick={handleReset}
             disabled={!archivo && !resultado}
@@ -533,6 +541,10 @@ export default function App() {
             ) : (
               <section className="step-card empty-state-card">Acceso no autorizado</section>
             )
+          )}
+
+          {navActivo === 'filtrado-colegios' && (
+            <FiltradoColegiosModule />
           )}
         </main>
       </div>

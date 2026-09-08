@@ -382,3 +382,47 @@ export async function exportarMatriculaColegio(colegioCodigo) {
   downloadBlob(blob, `REPORTE - I.E. ${safeCode}.xlsx`)
 }
 
+export async function procesarFiltradoColegio(archivo) {
+  const formData = new FormData()
+  formData.append('archivo', archivo)
+
+  const res = await fetch(`${BASE_URL}/matricula/filtrar-colegio/procesar`, {
+    method: 'POST',
+    headers: getHeaders(true),
+    body: formData,
+  })
+
+  return parseJsonResponse(res, 'Error al procesar el archivo para filtrado de colegio')
+}
+
+export async function exportarFiltradoColegio(colegio, tipoExcel) {
+  const res = await fetch(`${BASE_URL}/matricula/filtrar-colegio/exportar`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ colegio, tipo_excel: tipoExcel }),
+  })
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.error || errorData.mensaje || 'Error al exportar el archivo del colegio')
+  }
+
+  const blob = await res.blob()
+  const safeName = colegio.replace(/[^A-Za-z0-9_-]/g, '_')
+  const defaultFileName = tipoExcel === 'NEXUS' ? `NEXUS - ${safeName}.xlsx` : `REPORTE - I.E. ${safeName}.xlsx`
+
+  // Obtener filename de Content-Disposition si existe
+  const disposition = res.headers.get('content-disposition')
+  let fileName = defaultFileName
+  if (disposition && disposition.indexOf('filename=') !== -1) {
+    const filenameRegex = /filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/
+    const matches = filenameRegex.exec(disposition)
+    if (matches != null && matches[1]) {
+      fileName = matches[1].replace(/['"]/g, '')
+    }
+  }
+
+  downloadBlob(blob, fileName)
+}
+
+
