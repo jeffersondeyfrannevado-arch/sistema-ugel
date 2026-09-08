@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { procesarFiltradoColegio, exportarFiltradoColegio } from '../services/api'
+import { procesarFiltradoColegio, exportarFiltradoColegio, exportarZipColegios } from '../services/api'
 
 export default function FiltradoColegiosModule() {
   const [archivo, setArchivo] = useState(null)
@@ -10,6 +10,7 @@ export default function FiltradoColegiosModule() {
   const [busqueda, setBusqueda] = useState('')
   const [colegioSeleccionado, setColegioSeleccionado] = useState('')
   const [descargando, setDescargando] = useState(false)
+  const [descargandoZip, setDescargandoZip] = useState(false)
   const [exitoMsg, setExitoMsg] = useState(null)
 
   const handleFileChange = async (e) => {
@@ -78,6 +79,23 @@ export default function FiltradoColegiosModule() {
       setErrorMsg(err.message || 'Error al generar la descarga del colegio seleccionado')
     } finally {
       setDescargando(false)
+    }
+  }
+
+  const handleDescargarZip = async () => {
+    if (!resultado) return
+
+    setDescargandoZip(true)
+    setErrorMsg(null)
+    setExitoMsg(null)
+
+    try {
+      await exportarZipColegios(resultado.tipo_excel)
+      setExitoMsg(`¡Paquete ZIP con los ${resultado.total_colegios} colegios generado y descargado con éxito!`)
+    } catch (err) {
+      setErrorMsg(err.message || 'Error al generar el paquete ZIP de colegios')
+    } finally {
+      setDescargandoZip(false)
     }
   }
 
@@ -343,11 +361,44 @@ export default function FiltradoColegiosModule() {
               </select>
             </div>
 
-            {/* Botón de Descarga */}
-            <div style={{ textAlign: 'right' }}>
+            {/* Botones de Descarga: Individual y Masiva ZIP */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button
+                onClick={handleDescargarZip}
+                disabled={descargandoZip || descargando}
+                style={{
+                  backgroundColor: descargandoZip ? '#94a3b8' : '#4f46e5',
+                  color: '#ffffff',
+                  padding: '12px 24px',
+                  borderRadius: '8px',
+                  fontWeight: '700',
+                  fontSize: '0.95rem',
+                  border: 'none',
+                  cursor: descargandoZip ? 'not-allowed' : 'pointer',
+                  boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                {descargandoZip ? (
+                  <>
+                    <span className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px' }} />
+                    Empaquetando ZIP con {resultado.total_colegios} colegios...
+                  </>
+                ) : (
+                  <>
+                    <svg style={{ width: '20px', height: '20px' }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v1a2 2 0 01-2 2M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+                    </svg>
+                    Descargar Paquete ZIP (Todos los Colegios)
+                  </>
+                )}
+              </button>
+
               <button
                 onClick={handleDescargar}
-                disabled={descargando || !colegioSeleccionado}
+                disabled={descargando || descargandoZip || !colegioSeleccionado}
                 style={{
                   backgroundColor: descargando || !colegioSeleccionado ? '#94a3b8' : '#16a34a',
                   color: '#ffffff',

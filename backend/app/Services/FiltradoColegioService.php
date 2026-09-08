@@ -427,4 +427,69 @@ class FiltradoColegioService
             'path' => $fullPath,
         ];
     }
+
+    /**
+     * Exportación Masiva en archivo ZIP de todos los colegios procesados.
+     */
+    public function exportarZipColegios($fileSource): array
+    {
+        $resProceso = $this->procesarArchivoColegios($fileSource);
+        $tipoExcel = $resProceso['tipo_excel'];
+        $colegios = $resProceso['colegios'] ?? [];
+
+        if (empty($colegios)) {
+            throw new Exception('No se encontraron colegios en el archivo para exportar.');
+        }
+
+        $tempFolder = storage_path('app/temp_zip_' . uniqid());
+        if (!is_dir($tempFolder)) {
+            mkdir($tempFolder, 0755, true);
+        }
+
+        $zipFileName = $tipoExcel === 'NEXUS' ? 'NEXUS_Todos_Los_Colegios.zip' : 'REPORTE_Todos_Los_Colegios.zip';
+        $zipPath = storage_path("app/{$zipFileName}");
+
+        $zip = new \ZipArchive();
+        if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {
+            throw new Exception('No se pudo crear el archivo ZIP.');
+        }
+
+        $generados = [];
+        foreach ($colegios as $c) {
+            $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codmod'] ?? null;
+            if (!$key) continue;
+
+            try {
+                if ($tipoExcel === 'NEXUS') {
+                    $excelRes = $this->exportarNexusColegio($fileSource, $key);
+                } else {
+                    $excelRes = $this->exportarMatriculaColegio($fileSource, $key);
+                }
+
+                if (file_exists($excelRes['path'])) {
+                    $zip->addFile($excelRes['path'], $excelRes['filename']);
+                    $generados[] = $excelRes['path'];
+                }
+            } catch (Exception $e) {
+                // Continuar procesando los demás colegios
+                continue;
+            }
+        }
+
+        $zip->close();
+
+        // Limpiar archivos temporales individuales
+        foreach ($generados as $path) {
+            @unlink($path);
+        }
+        if (is_dir($tempFolder)) {
+            @rmdir($tempFolder);
+        }
+
+        return [
+            'path' => $zipPath,
+            'filename' => $zipFileName,
+        ];
+    }
 }
+

@@ -145,6 +145,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/descargar-zip', [MatriculaController::class, 'descargarZip']);
         Route::post('/filtrar-colegio/procesar', [MatriculaController::class, 'procesarFiltradoColegio']);
         Route::post('/filtrar-colegio/exportar', [MatriculaController::class, 'exportarFiltradoColegio']);
+        Route::post('/filtrar-colegio/exportar-zip', [MatriculaController::class, 'exportarZipColegios']);
         Route::post('/nexus/exportar-colegio', [MatriculaController::class, 'exportarNexusColegio']);
         Route::post('/colegio/exportar', [MatriculaController::class, 'exportarMatriculaColegio']);
     });

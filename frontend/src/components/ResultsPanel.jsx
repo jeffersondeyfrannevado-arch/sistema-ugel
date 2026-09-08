@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { descargarArchivo, descargarZip, exportarNexusColegio, exportarMatriculaColegio } from '../services/api'
+import { descargarArchivo, descargarZip, exportarNexusColegio, exportarMatriculaColegio, exportarZipColegios } from '../services/api'
 
 function GrupoArchivos({ titulo, lista, colorClass, descargando, onDescargar }) {
   return (
@@ -34,6 +34,7 @@ function GrupoArchivos({ titulo, lista, colorClass, descargando, onDescargar }) 
 }
 
 export default function ResultsPanel({ archivos = [], errores = [], colegios = [], tipoExcel = 'MATRICULA' }) {
+  const [subTab, setSubTab] = useState('distritos') // 'distritos' | 'colegios'
   const [descargando, setDescargando] = useState(null)
   const [busquedaColegio, setBusquedaColegio] = useState('')
   const [colegioSeleccionado, setColegioSeleccionado] = useState(colegios[0]?.codigo_ie || colegios[0]?.nombre || '')
@@ -66,8 +67,8 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
     }
   }
 
-  const handleZip = async () => {
-    setDescargando('zip')
+  const handleZipDistritos = async () => {
+    setDescargando('zip_distritos')
     try {
       await descargarZip()
     } finally {
@@ -97,110 +98,207 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
     }
   }
 
+  const handleZipColegios = async () => {
+    try {
+      setDescargando('zip_colegios')
+      setMensajeColegio({ tipo: 'info', texto: `Empaquetando paquete ZIP con los ${colegios.length} colegios...` })
+
+      await exportarZipColegios(tipoExcel)
+      setMensajeColegio({ tipo: 'success', texto: `¡Paquete ZIP con los ${colegios.length} colegios descargado con éxito!` })
+    } catch (err) {
+      setMensajeColegio({ tipo: 'error', texto: `Error al generar ZIP por colegios: ${err.message}` })
+    } finally {
+      setDescargando(null)
+    }
+  }
+
   return (
     <div className="results-panel">
-      {/* Fila de descarga masiva ZIP */}
-      <div className="zip-row">
+      {/* Pestañas de Navegación dentro de Descargas */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        borderBottom: '2px solid #e2e8f0',
+        marginBottom: '20px',
+        paddingBottom: '4px'
+      }}>
         <button
-          className="btn-zip"
-          onClick={handleZip}
-          disabled={descargando === 'zip'}
+          onClick={() => setSubTab('distritos')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderRadius: '6px 6px 0 0',
+            backgroundColor: subTab === 'distritos' ? '#4f46e5' : '#f1f5f9',
+            color: subTab === 'distritos' ? '#ffffff' : '#475569',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            fontSize: '0.9rem'
+          }}
         >
-          {descargando === 'zip' ? 'Generando ZIP...' : 'Descargar paquete completo ZIP'}
+          📂 Archivos por Distrito ({archivos.length})
         </button>
-        <span className="zip-hint">
-          {archivos.length} archivos agrupados por distrito y modalidad
-        </span>
+
+        <button
+          onClick={() => setSubTab('colegios')}
+          style={{
+            padding: '10px 20px',
+            border: 'none',
+            borderRadius: '6px 6px 0 0',
+            backgroundColor: subTab === 'colegios' ? '#4f46e5' : '#f1f5f9',
+            color: subTab === 'colegios' ? '#ffffff' : '#475569',
+            fontWeight: 'bold',
+            cursor: 'pointer',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}
+        >
+          🏫 Filtrado por Colegio / IE ({colegios.length})
+        </button>
       </div>
 
-      {/* Sección Agregada: Filtrar y Descargar por Colegio Individual */}
-      <section style={{
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: '10px',
-        padding: '1.25rem',
-        margin: '1.25rem 0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.85rem' }}>
-          <strong style={{ fontSize: '1rem', color: '#0f172a' }}>
-            🏫 Descargar Reporte Individual por Colegio (I.E.)
-          </strong>
-          <span style={{ fontSize: '0.75rem', padding: '0.2rem 0.6rem', borderRadius: '4px', background: tipoExcel === 'NEXUS' ? '#1b365d' : '#ca8a04', color: '#ffffff', fontWeight: 'bold' }}>
-            Formato: {tipoExcel === 'NEXUS' ? 'NEXUS (Banner Azul)' : 'REPORTE MATRÍCULA (5 Colores)'}
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="🔍 Buscar por colegio o código (ej. 070, 15255)..."
-            value={busquedaColegio}
-            onChange={(e) => setBusquedaColegio(e.target.value)}
-            style={{ padding: '0.6rem 0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '220px', fontSize: '0.9rem' }}
-          />
-
-          <select
-            value={colegioSeleccionado}
-            onChange={(e) => setColegioSeleccionado(e.target.value)}
-            style={{ padding: '0.6rem 0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '2', minWidth: '240px', fontWeight: 'bold', fontSize: '0.9rem' }}
-          >
-            {colegiosFiltrados.length === 0 ? (
-              <option value="">No hay colegios encontrados</option>
-            ) : (
-              colegiosFiltrados.map((c, i) => (
-                <option key={i} value={c.codigo_ie || c.nombre}>
-                  I.E. {c.nombre || c.codigo_ie} {c.codmod ? `(Cód. Mod. ${c.codmod})` : ''}
-                </option>
-              ))
-            )}
-          </select>
-
-          <button
-            onClick={handleDescargarColegio}
-            disabled={descargando?.startsWith('colegio_') || (!colegioActual.nombre && !colegioActual.codigo_ie)}
-            style={{
-              background: tipoExcel === 'NEXUS' ? '#1b365d' : '#ca8a04',
-              color: '#ffffff',
-              padding: '0.6rem 1.2rem',
-              borderRadius: '6px',
-              border: 'none',
-              fontWeight: 'bold',
-              fontSize: '0.9rem',
-              cursor: 'pointer',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {descargando?.startsWith('colegio_') ? 'Generando Excel...' : `Descargar ${tipoExcel === 'NEXUS' ? 'NEXUS' : 'REPORTE'} - ${colegioActual.nombre || colegioActual.codigo_ie || 'I.E.'}`}
-          </button>
-        </div>
-
-        {mensajeColegio && (
-          <div style={{
-            marginTop: '0.85rem',
-            padding: '0.65rem 0.85rem',
-            borderRadius: '6px',
-            fontSize: '0.85rem',
-            background: mensajeColegio.tipo === 'error' ? '#fef2f2' : (mensajeColegio.tipo === 'success' ? '#f0fdf4' : '#eff6ff'),
-            color: mensajeColegio.tipo === 'error' ? '#991b1b' : (mensajeColegio.tipo === 'success' ? '#166534' : '#1e40af'),
-            border: '1px solid currentColor'
-          }}>
-            {mensajeColegio.texto}
+      {/* Sub-Pestaña 1: Archivos por Distrito */}
+      {subTab === 'distritos' && (
+        <>
+          <div className="zip-row">
+            <button
+              className="btn-zip"
+              onClick={handleZipDistritos}
+              disabled={descargando === 'zip_distritos'}
+            >
+              {descargando === 'zip_distritos' ? 'Generando ZIP...' : 'Descargar paquete completo ZIP (Distritos)'}
+            </button>
+            <span className="zip-hint">
+              {archivos.length} archivos agrupados por distrito y modalidad
+            </span>
           </div>
-        )}
-      </section>
 
-      {/* Grupos de descarga por distrito originales */}
-      {publicos.length > 0 && (
-        <GrupoArchivos titulo="Gestion publica por Distrito" lista={publicos} colorClass="grupo-publico" descargando={descargando} onDescargar={handleDescargarDistrito} />
+          {publicos.length > 0 && (
+            <GrupoArchivos titulo="Gestion publica por Distrito" lista={publicos} colorClass="grupo-publico" descargando={descargando} onDescargar={handleDescargarDistrito} />
+          )}
+
+          {privados.length > 0 && (
+            <GrupoArchivos titulo="Gestion privada por Distrito" lista={privados} colorClass="grupo-privado" descargando={descargando} onDescargar={handleDescargarDistrito} />
+          )}
+        </>
       )}
 
-      {privados.length > 0 && (
-        <GrupoArchivos titulo="Gestion privada por Distrito" lista={privados} colorClass="grupo-privado" descargando={descargando} onDescargar={handleDescargarDistrito} />
+      {/* Sub-Pestaña 2: Filtrado e Individualización por Colegio */}
+      {subTab === 'colegios' && (
+        <section style={{
+          background: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '10px',
+          padding: '1.25rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div>
+              <strong style={{ fontSize: '1.05rem', color: '#0f172a', display: 'block' }}>
+                🏫 Descarga por Colegio / Institución Educativa
+              </strong>
+              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>
+                Descarga un colegio individual o el paquete comprimido ZIP con todos los colegios.
+              </span>
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{
+                fontSize: '0.75rem',
+                padding: '4px 10px',
+                borderRadius: '6px',
+                background: tipoExcel === 'NEXUS' ? '#1b365d' : '#16803d',
+                color: '#ffffff',
+                fontWeight: 'bold'
+              }}>
+                Formato: {tipoExcel === 'NEXUS' ? 'NEXUS (Banner Azul)' : 'REPORTE MATRÍCULA (5 Colores)'}
+              </span>
+
+              <button
+                onClick={handleZipColegios}
+                disabled={descargando === 'zip_colegios' || colegios.length === 0}
+                style={{
+                  backgroundColor: descargando === 'zip_colegios' ? '#94a3b8' : '#4f46e5',
+                  color: '#ffffff',
+                  padding: '8px 16px',
+                  borderRadius: '6px',
+                  border: 'none',
+                  fontWeight: 'bold',
+                  fontSize: '0.85rem',
+                  cursor: descargando === 'zip_colegios' ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+              >
+                {descargando === 'zip_colegios' ? 'Generando ZIP Colegios...' : '📦 Descargar ZIP (Todos los Colegios)'}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="🔍 Buscar por colegio o código..."
+              value={busquedaColegio}
+              onChange={(e) => setBusquedaColegio(e.target.value)}
+              style={{ padding: '0.6rem 0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '220px', fontSize: '0.9rem' }}
+            />
+
+            <select
+              value={colegioSeleccionado}
+              onChange={(e) => setColegioSeleccionado(e.target.value)}
+              style={{ padding: '0.6rem 0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '2', minWidth: '240px', fontWeight: 'bold', fontSize: '0.9rem' }}
+            >
+              {colegiosFiltrados.length === 0 ? (
+                <option value="">No hay colegios encontrados</option>
+              ) : (
+                colegiosFiltrados.map((c, i) => (
+                  <option key={i} value={c.codigo_ie || c.nombre}>
+                    I.E. {c.nombre || c.codigo_ie} {c.codmod ? `(Cód. Mod. ${c.codmod})` : ''}
+                  </option>
+                ))
+              )}
+            </select>
+
+            <button
+              onClick={handleDescargarColegio}
+              disabled={descargando?.startsWith('colegio_') || (!colegioActual.nombre && !colegioActual.codigo_ie)}
+              style={{
+                background: tipoExcel === 'NEXUS' ? '#1b365d' : '#16a34a',
+                color: '#ffffff',
+                padding: '0.6rem 1.2rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: 'bold',
+                fontSize: '0.9rem',
+                cursor: 'pointer',
+                whiteSpace: 'nowrap'
+              }}
+            >
+              {descargando?.startsWith('colegio_') ? 'Generando Excel...' : `Descargar ${tipoExcel === 'NEXUS' ? 'NEXUS' : 'REPORTE'} - ${colegioActual.nombre || colegioActual.codigo_ie || 'I.E.'}`}
+            </button>
+          </div>
+
+          {mensajeColegio && (
+            <div style={{
+              marginTop: '0.85rem',
+              padding: '0.65rem 0.85rem',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              background: mensajeColegio.tipo === 'error' ? '#fef2f2' : (mensajeColegio.tipo === 'success' ? '#f0fdf4' : '#eff6ff'),
+              color: mensajeColegio.tipo === 'error' ? '#991b1b' : (mensajeColegio.tipo === 'success' ? '#166534' : '#1e40af'),
+              border: '1px solid currentColor'
+            }}>
+              {mensajeColegio.texto}
+            </div>
+          )}
+        </section>
       )}
 
       {errores && errores.length > 0 && (
-        <details className="errores-detail">
+        <details className="errores-detail" style={{ marginTop: '16px' }}>
           <summary>{errores.length} registro(s) omitido(s) por validacion</summary>
           <ul>
             {errores.map((e, i) => <li key={i}>{e}</li>)}

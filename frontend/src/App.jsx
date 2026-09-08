@@ -537,7 +537,7 @@ export default function App() {
 
           {navActivo === 'administracion' && (
             isAdmin ? (
-              <AdminControlPanel onUnauthorized={handleLogout} />
+              <AdminControlPanel currentUser={user} onUnauthorized={handleLogout} onCurrentUserChange={setUser} />
             ) : (
               <section className="step-card empty-state-card">Acceso no autorizado</section>
             )

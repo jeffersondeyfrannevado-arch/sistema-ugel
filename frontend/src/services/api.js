@@ -425,4 +425,22 @@ export async function exportarFiltradoColegio(colegio, tipoExcel) {
   downloadBlob(blob, fileName)
 }
 
+export async function exportarZipColegios(tipoExcel) {
+  const res = await fetch(`${BASE_URL}/matricula/filtrar-colegio/exportar-zip`, {
+    method: 'POST',
+    headers: getHeaders(),
+  })
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.error || errorData.mensaje || 'Error al exportar el paquete ZIP de colegios')
+  }
+
+  const blob = await res.blob()
+  const defaultFileName = tipoExcel === 'NEXUS' ? 'NEXUS_Todos_Los_Colegios.zip' : 'REPORTE_Todos_Los_Colegios.zip'
+
+  downloadBlob(blob, defaultFileName)
+}
+
+
 
