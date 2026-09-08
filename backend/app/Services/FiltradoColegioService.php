@@ -18,10 +18,42 @@ class FiltradoColegioService
      * Procesa un archivo subido en el módulo aislado de filtrado por colegio.
      * Auto-detecta si es NEXUS o REPORTE MATRÍCULA y extrae la lista de colegios.
      */
+    private function getWritableDir(string $subfolder): string
+    {
+        $dir = storage_path("app/{$subfolder}");
+        if (@is_dir($dir) || @mkdir($dir, 0755, true)) {
+            return $dir;
+        }
+        $tmpDir = sys_get_temp_dir() . "/{$subfolder}";
+        if (!is_dir($tmpDir)) @mkdir($tmpDir, 0755, true);
+        return $tmpDir;
+    }
+
+    /**
+     * Procesa un archivo subido en el módulo aislado de filtrado por colegio.
+     * Auto-detecta si es NEXUS o REPORTE MATRÍCULA y extrae la lista de colegios.
+     */
     public function procesarArchivoColegios($file): array
     {
         $filePath = is_string($file) ? $file : $file->getRealPath();
-        $spreadsheet = IOFactory::load($filePath);
+
+        try {
+            $spreadsheet = IOFactory::load($filePath);
+        } catch (\Throwable $e) {
+            $name = is_string($file) ? $file : ($file->getClientOriginalName() ?? 'archivo.xlsx');
+            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+            if ($ext === 'xls') {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
+                $reader->setReadDataOnly(true);
+                $spreadsheet = $reader->load($filePath);
+            } else {
+                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
+                $reader->setReadDataOnly(true);
+                $spreadsheet = $reader->load($filePath);
+            }
+        }
+
         $sheet = $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray(null, true, true, false);
 
@@ -301,9 +333,7 @@ class FiltradoColegioService
             $currentRow++;
         }
 
-        $outputDir = storage_path('app/nexus_output');
-        if (!is_dir($outputDir)) mkdir($outputDir, 0755, true);
-
+        $outputDir = $this->getWritableDir('nexus_output');
         $safeName = preg_replace('/[^A-Za-z0-9_-]/', '_', $nombreColegio);
         $filename = "NEXUS - {$safeName}.xlsx";
         $fullPath = "{$outputDir}/{$filename}";
@@ -412,9 +442,7 @@ class FiltradoColegioService
             $currentOutRow++;
         }
 
-        $outputDir = storage_path('app/matricula_colegios');
-        if (!is_dir($outputDir)) mkdir($outputDir, 0755, true);
-
+        $outputDir = $this->getWritableDir('matricula_colegios');
         $safeCode = preg_replace('/[^A-Za-z0-9_-]/', '_', $codigoColegio);
         $filename = "REPORTE - I.E. {$safeCode}.xlsx";
         $fullPath = "{$outputDir}/{$filename}";
@@ -441,13 +469,9 @@ class FiltradoColegioService
             throw new Exception('No se encontraron colegios en el archivo para exportar.');
         }
 
-        $tempFolder = storage_path('app/temp_zip_' . uniqid());
-        if (!is_dir($tempFolder)) {
-            mkdir($tempFolder, 0755, true);
-        }
-
+        $outputDir = $this->getWritableDir('temp_zips');
         $zipFileName = $tipoExcel === 'NEXUS' ? 'NEXUS_Todos_Los_Colegios.zip' : 'REPORTE_Todos_Los_Colegios.zip';
-        $zipPath = storage_path("app/{$zipFileName}");
+        $zipPath = "{$outputDir}/{$zipFileName}";
 
         $zip = new \ZipArchive();
         if ($zip->open($zipPath, \ZipArchive::CREATE | \ZipArchive::OVERWRITE) !== true) {

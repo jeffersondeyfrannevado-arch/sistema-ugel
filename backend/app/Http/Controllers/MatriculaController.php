@@ -51,12 +51,8 @@ class MatriculaController extends Controller
         try {
             $resultado = $this->service->procesarArchivo($archivo, $columnasResaltadas);
 
-            // También extraer colegios y guardar copia temporal para la pestaña Descargas y Filtrado
-            $tempDir = storage_path('app');
-            if (!is_dir($tempDir)) @mkdir($tempDir, 0755, true);
-            $tempPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
-            @copy($archivo->getRealPath(), $tempPath);
-
+            // Guardar copia temporal y extraer colegios para la pestaña Descargas y Filtrado
+            $this->saveUploadedTempFile($archivo);
             $colegiosData = $this->filtradoColegioService->procesarArchivoColegios($archivo);
 
             return response()->json([
@@ -69,12 +65,33 @@ class MatriculaController extends Controller
                 'tipo_excel' => $colegiosData['tipo_excel'] ?? 'MATRICULA',
                 'errores' => $resultado['errores'],
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'mensaje' => 'Error al procesar: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    private function saveUploadedTempFile($file): string
+    {
+        $dir = storage_path('app');
+        if (!@is_dir($dir) || !@is_writable($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $targetDir = (@is_dir($dir) && @is_writable($dir)) ? $dir : sys_get_temp_dir();
+        $targetPath = $targetDir . '/temp_filtrado_colegio_uploaded.xlsx';
+        @copy($file->getRealPath(), $targetPath);
+        return $targetPath;
+    }
+
+    private function getUploadedTempFile(): ?string
+    {
+        $path1 = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
+        if (file_exists($path1)) return $path1;
+        $path2 = sys_get_temp_dir() . '/temp_filtrado_colegio_uploaded.xlsx';
+        if (file_exists($path2)) return $path2;
+        return null;
     }
 
     /**
@@ -83,24 +100,20 @@ class MatriculaController extends Controller
     public function procesarFiltradoColegio(Request $request)
     {
         $request->validate([
-            'archivo' => 'required|file|mimes:xlsx,xls|max:20480',
+            'archivo' => 'required|file|max:30720',
         ]);
 
         try {
             $archivo = $request->file('archivo');
             $resultado = $this->filtradoColegioService->procesarArchivoColegios($archivo);
 
-            // Guardar copia temporal aislada para exportación posterior con verificación de directorio
-            $tempDir = storage_path('app');
-            if (!is_dir($tempDir)) @mkdir($tempDir, 0755, true);
-            $tempPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
-            @copy($archivo->getRealPath(), $tempPath);
+            $this->saveUploadedTempFile($archivo);
 
             return response()->json([
                 'success' => true,
                 'data' => $resultado
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'mensaje' => 'Error al procesar archivo para filtrado: ' . $e->getMessage(),
@@ -120,9 +133,9 @@ class MatriculaController extends Controller
 
         $colegio = $request->input('colegio');
         $tipoExcel = $request->input('tipo_excel');
-        $uploadedPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
+        $uploadedPath = $this->getUploadedTempFile();
 
-        if (!file_exists($uploadedPath)) {
+        if (!$uploadedPath || !file_exists($uploadedPath)) {
             return response()->json(['error' => 'No hay un archivo cargado recientemente en la pestaña de filtrado.'], 404);
         }
 
@@ -134,7 +147,7 @@ class MatriculaController extends Controller
             }
 
             return response()->download($res['path'], $res['filename']);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => 'Error al exportar archivo por colegio: ' . $e->getMessage()], 500);
         }
     }
@@ -144,16 +157,16 @@ class MatriculaController extends Controller
      */
     public function exportarZipColegios(Request $request)
     {
-        $uploadedPath = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
+        $uploadedPath = $this->getUploadedTempFile();
 
-        if (!file_exists($uploadedPath)) {
+        if (!$uploadedPath || !file_exists($uploadedPath)) {
             return response()->json(['error' => 'No hay un archivo cargado recientemente para exportar el paquete ZIP.'], 404);
         }
 
         try {
             $res = $this->filtradoColegioService->exportarZipColegios($uploadedPath);
             return response()->download($res['path'], $res['filename']);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return response()->json(['error' => 'Error al exportar paquete ZIP por colegios: ' . $e->getMessage()], 500);
         }
     }
