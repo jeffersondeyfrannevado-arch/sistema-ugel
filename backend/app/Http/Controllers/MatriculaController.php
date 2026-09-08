@@ -49,11 +49,14 @@ class MatriculaController extends Controller
         $columnasResaltadas = $request->input('columnas_resaltadas', []);
 
         try {
+            // 1. Guardar copia temporal PRIMERO para asegurar disponibilidad
+            $tempPath = $this->saveUploadedTempFile($archivo);
+
+            // 2. Procesar algoritmo principal de matrícula
             $resultado = $this->service->procesarArchivo($archivo, $columnasResaltadas);
 
-            // Guardar copia temporal y extraer colegios para la pestaña Descargas y Filtrado
-            $this->saveUploadedTempFile($archivo);
-            $colegiosData = $this->filtradoColegioService->procesarArchivoColegios($archivo);
+            // 3. Extraer colegios desde la copia guardada
+            $colegiosData = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
 
             return response()->json([
                 'success' => true,
@@ -75,13 +78,19 @@ class MatriculaController extends Controller
 
     private function saveUploadedTempFile($file): string
     {
+        $sourcePath = is_string($file) ? $file : ($file->getRealPath() ?: $file->getPathname());
+
         $dir = storage_path('app');
         if (!@is_dir($dir) || !@is_writable($dir)) {
             @mkdir($dir, 0755, true);
         }
         $targetDir = (@is_dir($dir) && @is_writable($dir)) ? $dir : sys_get_temp_dir();
         $targetPath = $targetDir . '/temp_filtrado_colegio_uploaded.xlsx';
-        @copy($file->getRealPath(), $targetPath);
+
+        if (file_exists($sourcePath)) {
+            @copy($sourcePath, $targetPath);
+        }
+
         return $targetPath;
     }
 
@@ -105,9 +114,12 @@ class MatriculaController extends Controller
 
         try {
             $archivo = $request->file('archivo');
-            $resultado = $this->filtradoColegioService->procesarArchivoColegios($archivo);
 
-            $this->saveUploadedTempFile($archivo);
+            // 1. Guardar copia temporal PRIMERO
+            $tempPath = $this->saveUploadedTempFile($archivo);
+
+            // 2. Procesar filtrado usando la ruta de archivo ya guardada
+            $resultado = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
 
             return response()->json([
                 'success' => true,
