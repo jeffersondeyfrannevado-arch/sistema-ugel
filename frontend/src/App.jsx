@@ -348,8 +348,7 @@ export default function App() {
           {/* Nueva opción agregada: Filtrado por Colegio NEXUS */}
           <button
             className={`nav-item ${navActivo === 'colegios_nexus' ? 'nav-item-active' : ''}`}
-            onClick={() => dashboardDisponible && setNavActivo('colegios_nexus')}
-            disabled={!dashboardDisponible}
+            onClick={() => setNavActivo('colegios_nexus')}
           >
             Padrón Plazas NEXUS
           </button>
@@ -357,8 +356,7 @@ export default function App() {
           {/* Nueva opción agregada: Filtrado por Colegio Matrícula */}
           <button
             className={`nav-item ${navActivo === 'colegios_matricula' ? 'nav-item-active' : ''}`}
-            onClick={() => dashboardDisponible && setNavActivo('colegios_matricula')}
-            disabled={!dashboardDisponible}
+            onClick={() => setNavActivo('colegios_matricula')}
           >
             Fichas por Colegio (REPORTE)
           </button>
@@ -526,13 +524,25 @@ export default function App() {
           )}
 
           {/* Módulo Agregado: Padrón Plazas NEXUS (Filtrado por Colegio con Banner Azul) */}
-          {navActivo === 'colegios_nexus' && dashboardDisponible && (
-            <NexusPanel resultado={resultado} />
+          {navActivo === 'colegios_nexus' && (
+            <NexusPanel
+              resultado={resultado}
+              onResultadoChange={(res) => {
+                setResultado(res)
+                setEstado('listo')
+              }}
+            />
           )}
 
           {/* Módulo Agregado: Fichas por Colegio (Filtrado por Colegio REPORTE ACTUALIZADO con 5 Colores) */}
-          {navActivo === 'colegios_matricula' && dashboardDisponible && (
-            <MatriculaNivelesPanel resultado={resultado} />
+          {navActivo === 'colegios_matricula' && (
+            <MatriculaNivelesPanel
+              resultado={resultado}
+              onResultadoChange={(res) => {
+                setResultado(res)
+                setEstado('listo')
+              }}
+            />
           )}
 
           {navActivo === 'descargas' && dashboardDisponible && (

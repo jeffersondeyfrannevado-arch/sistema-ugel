@@ -1,14 +1,40 @@
-import { useState, useMemo } from 'react'
-import { exportarMatriculaColegio } from '../services/api'
+import { useState, useMemo, useRef } from 'react'
+import { exportarMatriculaColegio, procesarArchivo } from '../services/api'
 
-export default function MatriculaNivelesPanel({ resultado }) {
-  const colegios = resultado?.colegios || []
-  const estadisticas = resultado?.estadisticas || {}
+export default function MatriculaNivelesPanel({ resultado, onResultadoChange }) {
+  const [localResultado, setLocalResultado] = useState(resultado)
+  const [cargando, setCargando] = useState(false)
+
+  const activeResultado = resultado || localResultado
+  const colegios = activeResultado?.colegios || []
+  const estadisticas = activeResultado?.estadisticas || {}
 
   const [busqueda, setBusqueda] = useState('')
   const [colegioSeleccionado, setColegioSeleccionado] = useState(colegios[0]?.codigo_ie || colegios[0]?.nombre || '')
   const [descargando, setDescargando] = useState(false)
   const [mensaje, setMensaje] = useState(null)
+  const fileInputRef = useRef(null)
+
+  const handleSubirExcelMatricula = async (e) => {
+    if (!e.target.files || !e.target.files[0]) return
+    const file = e.target.files[0]
+
+    try {
+      setCargando(true)
+      setMensaje({ tipo: 'info', texto: 'Procesando archivo REPORTE ACTUALIZADO y extrayendo colegios...' })
+      const res = await procesarArchivo(file, [])
+      setLocalResultado(res)
+      if (onResultadoChange) onResultadoChange(res)
+      if (res.colegios && res.colegios.length > 0) {
+        setColegioSeleccionado(res.colegios[0].codigo_ie || res.colegios[0].nombre)
+      }
+      setMensaje({ tipo: 'success', texto: `Archivo de Matrícula procesado correctamente. ${res.colegios?.length || 0} colegios identificados.` })
+    } catch (err) {
+      setMensaje({ tipo: 'error', texto: `Error al procesar Matrícula: ${err.message}` })
+    } finally {
+      setCargando(false)
+    }
+  }
 
   const colegiosFiltrados = useMemo(() => {
     if (!busqueda.trim()) return colegios
@@ -33,7 +59,7 @@ export default function MatriculaNivelesPanel({ resultado }) {
       setDescargando(true)
       setMensaje({ tipo: 'info', texto: `Generando archivo REPORTE - I.E. ${targetCode}...` })
       await exportarMatriculaColegio(targetCode)
-      setMensaje({ tipo: 'success', texto: `Excel de Matrícula generado y descargado correctamente.` })
+      setMensaje({ tipo: 'success', texto: `Excel REPORTE - I.E. ${targetCode}.xlsx descargado correctamente con las 5 secciones coloreadas.` })
     } catch (err) {
       setMensaje({ tipo: 'error', texto: `Error al descargar: ${err.message}` })
     } finally {
@@ -44,123 +70,121 @@ export default function MatriculaNivelesPanel({ resultado }) {
   return (
     <section className="step-card dashboard-card matricula-theme">
       <div className="step-head" style={{ borderBottom: '2px solid #ca8a04', paddingBottom: '1rem' }}>
-        <div className="step-label" style={{ background: '#ca8a04', color: '#fff', padding: '0.2rem 0.8rem', borderRadius: '4px', display: 'inline-block' }}>
-          <span>MATRÍCULA</span> Módulo de Niveles Educativos
+        <div className="step-label" style={{ background: '#ca8a04', color: '#fff', padding: '0.3rem 0.8rem', borderRadius: '4px', display: 'inline-block', fontWeight: 'bold' }}>
+          MÓDULO FICHAS POR COLEGIO
         </div>
-        <h2 style={{ marginTop: '0.5rem', color: '#854d0e' }}>Detección Automática: Reporte de Matrícula</h2>
-        <p>Filtrado de matrícula por colegio respetando sus niveles ofertados (Inicial, Primaria, Secundaria).</p>
+        <h2 style={{ marginTop: '0.5rem', color: '#854d0e' }}>Filtrar y Exportar Reporte por Colegio (3 Niveles)</h2>
+        <p>Sube o selecciona el Excel REPORTE ACTUALIZADO para generar el archivo individual `REPORTE - I.E. [CODIGO].xlsx`.</p>
       </div>
 
-      {/* Tarjetas de Estadísticas Matrícula */}
-      <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', margin: '1.5rem 0' }}>
-        <div className="stat-card" style={{ background: '#fefce8', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #ca8a04' }}>
-          <span style={{ fontSize: '0.85rem', color: '#854d0e' }}>Total Registros Validados</span>
-          <h3 style={{ fontSize: '1.5rem', color: '#854d0e', margin: '0.2rem 0' }}>{estadisticas.total || 0}</h3>
-        </div>
-        <div className="stat-card" style={{ background: '#eff6ff', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #2563eb' }}>
-          <span style={{ fontSize: '0.85rem', color: '#1e40af' }}>Instituciones Públicas</span>
-          <h3 style={{ fontSize: '1.5rem', color: '#2563eb', margin: '0.2rem 0' }}>{estadisticas.publicos || 0}</h3>
-        </div>
-        <div className="stat-card" style={{ background: '#f5f3ff', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #7c3aed' }}>
-          <span style={{ fontSize: '0.85rem', color: '#5b21b6' }}>Instituciones Privadas</span>
-          <h3 style={{ fontSize: '1.5rem', color: '#7c3aed', margin: '0.2rem 0' }}>{estadisticas.privados || 0}</h3>
-        </div>
-        <div className="stat-card" style={{ background: '#fcfaef', padding: '1rem', borderRadius: '8px', borderLeft: '4px solid #eab308' }}>
-          <span style={{ fontSize: '0.85rem', color: '#713f12' }}>Colegios Identificados</span>
-          <h3 style={{ fontSize: '1.5rem', color: '#a16207', margin: '0.2rem 0' }}>{colegios.length}</h3>
-        </div>
-      </div>
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleSubirExcelMatricula}
+        accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+      />
 
-      {/* Selector y Buscador de Colegio */}
-      <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem' }}>
-        <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>Filtrar y Descargar Reporte de Colegio (I.E.)</h3>
-        <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
-          <input
-            type="text"
-            placeholder="🔍 Buscar código de colegio (ej. 070)..."
-            value={busqueda}
-            onChange={(e) => setBusqueda(e.target.value)}
-            style={{ padding: '0.6rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '240px' }}
-          />
-
-          <select
-            value={colegioSeleccionado}
-            onChange={(e) => setColegioSeleccionado(e.target.value)}
-            style={{ padding: '0.6rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '2', minWidth: '280px', fontWeight: 'bold' }}
-          >
-            {colegiosFiltrados.map((c) => (
-              <option key={c.codigo_ie || c.nombre} value={c.codigo_ie || c.nombre}>
-                I.E. {c.nombre || c.codigo_ie} {c.niveles?.length ? `(${c.niveles.join(', ')})` : ''}
-              </option>
-            ))}
-          </select>
-
+      {/* Zona de Carga Directa si aún no hay un archivo cargado */}
+      {(!colegios || colegios.length === 0) && (
+        <div style={{ background: '#fefce8', border: '2px dashed #fde047', borderRadius: '10px', padding: '2.5rem', textAlign: 'center', margin: '1.5rem 0' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>📄</div>
+          <h3 style={{ margin: '0 0 0.5rem 0', color: '#854d0e' }}>Subir Excel REPORTE ACTUALIZADO (ej. REPORTE ACTUALIZADO.xls)</h3>
+          <p style={{ margin: '0 0 1.5rem 0', color: '#a16207', fontSize: '0.9rem' }}>
+            Selecciona el informe consolidado de matrícula para extraer los colegios y descargar sus reportes por colegio.
+          </p>
           <button
-            onClick={handleDescargar}
-            disabled={descargando || (!colegioActual.codigo_ie && !colegioActual.nombre)}
+            onClick={() => fileInputRef.current?.click()}
+            disabled={cargando}
             style={{
               background: '#ca8a04',
               color: '#ffffff',
-              padding: '0.6rem 1.4rem',
-              borderRadius: '6px',
+              padding: '0.75rem 1.8rem',
+              borderRadius: '8px',
               border: 'none',
               fontWeight: 'bold',
-              cursor: descargando ? 'not-allowed' : 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-              transition: 'background 0.2s',
+              fontSize: '1rem',
+              cursor: cargando ? 'not-allowed' : 'pointer',
             }}
           >
-            📥 {descargando ? 'Generando...' : `Descargar REPORTE - I.E. ${colegioActual.nombre || colegioActual.codigo_ie || '070'}`}
+            {cargando ? 'Procesando Matrícula...' : 'Elegir REPORTE ACTUALIZADO'}
           </button>
         </div>
+      )}
 
-        {mensaje && (
-          <div style={{
-            marginTop: '1rem',
-            padding: '0.75rem',
-            borderRadius: '6px',
-            background: mensaje.tipo === 'error' ? '#fef2f2' : (mensaje.tipo === 'success' ? '#f0fdf4' : '#eff6ff'),
-            color: mensaje.tipo === 'error' ? '#991b1b' : (mensaje.tipo === 'success' ? '#166534' : '#1e40af'),
-            border: '1px solid currentColor',
-          }}>
-            {mensaje.texto}
-          </div>
-        )}
-      </div>
+      {/* Botón para cambiar o subir otro archivo de Matrícula si ya hay uno */}
+      {colegios && colegios.length > 0 && (
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#fefce8', padding: '0.75rem 1rem', borderRadius: '8px', margin: '1rem 0', border: '1px solid #fef08a' }}>
+          <span style={{ fontSize: '0.85rem', color: '#854d0e', fontWeight: 'bold' }}>
+            ✅ Archivo REPORTE ACTUALIZADO activo con {colegios.length} colegios detectados.
+          </span>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={cargando}
+            style={{ background: '#ca8a04', color: '#fff', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}
+          >
+            🔄 Cambiar REPORTE ACTUALIZADO
+          </button>
+        </div>
+      )}
 
-      {/* Resumen del Colegio Seleccionado con Niveles Dinámicos */}
-      {(colegioActual.codigo_ie || colegioActual.nombre) && (
-        <div style={{ background: '#fefce8', padding: '1.25rem', borderRadius: '8px', border: '1px solid #fef08a' }}>
-          <div style={{ background: '#ca8a04', color: '#ffffff', padding: '0.75rem 1rem', borderRadius: '6px', marginBottom: '1rem' }}>
-            <h4 style={{ margin: 0, textTransform: 'uppercase' }}>
-              REPORTE DE MATRÍCULA - I.E. {colegioActual.nombre || colegioActual.codigo_ie}
-            </h4>
-          </div>
+      {mensaje && (
+        <div style={{
+          margin: '1rem 0',
+          padding: '0.75rem 1rem',
+          borderRadius: '6px',
+          background: mensaje.tipo === 'error' ? '#fef2f2' : (mensaje.tipo === 'success' ? '#f0fdf4' : '#eff6ff'),
+          color: mensaje.tipo === 'error' ? '#991b1b' : (mensaje.tipo === 'success' ? '#166534' : '#1e40af'),
+          border: '1px solid currentColor',
+          fontSize: '0.9rem',
+        }}>
+          {mensaje.texto}
+        </div>
+      )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem' }}>
-            <div style={{ background: '#ffffff', padding: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Código I.E.</span>
-              <div style={{ fontWeight: 'bold', fontSize: '1.1rem', color: '#854d0e' }}>{colegioActual.codigo_ie || '070'}</div>
-            </div>
+      {/* Si hay colegios, mostrar selector y botón de descarga */}
+      {colegios && colegios.length > 0 && (
+        <div style={{ background: '#ffffff', padding: '1.25rem', borderRadius: '8px', border: '1px solid #e2e8f0', marginBottom: '1.5rem' }}>
+          <h3 style={{ margin: '0 0 1rem 0', color: '#1e293b' }}>Seleccionar Colegio para Filtrar Reporte de Matrícula</h3>
+          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
+            <input
+              type="text"
+              placeholder="🔍 Buscar código (ej. 070)..."
+              value={busqueda}
+              onChange={(e) => setBusqueda(e.target.value)}
+              style={{ padding: '0.65rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '220px' }}
+            />
 
-            <div style={{ background: '#ffffff', padding: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Niveles Ofertados ({colegioActual.niveles?.length || 1})</span>
-              <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: '#16a34a', marginTop: '0.2rem' }}>
-                {colegioActual.niveles?.length ? colegioActual.niveles.join(' • ') : 'INICIAL / PRIMARIA / SECUNDARIA'}
-              </div>
-            </div>
+            <select
+              value={colegioSeleccionado}
+              onChange={(e) => setColegioSeleccionado(e.target.value)}
+              style={{ padding: '0.65rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '2', minWidth: '260px', fontWeight: 'bold' }}
+            >
+              {colegiosFiltrados.map((c) => (
+                <option key={c.codigo_ie || c.nombre} value={c.codigo_ie || c.nombre}>
+                  I.E. {c.nombre || c.codigo_ie} {c.niveles?.length ? `(${c.niveles.join(', ')})` : ''}
+                </option>
+              ))}
+            </select>
 
-            <div style={{ background: '#ffffff', padding: '0.85rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '0.8rem', color: '#64748b' }}>Secciones con Colores</span>
-              <div style={{ fontSize: '0.85rem', marginTop: '0.2rem' }}>
-                <span style={{ display: 'inline-block', padding: '2px 6px', background: '#fff', border: '1px solid #ccc', borderRadius: '3px', marginRight: '4px' }}>Blanco</span>
-                <span style={{ display: 'inline-block', padding: '2px 6px', background: '#fff2cc', borderRadius: '3px', marginRight: '4px' }}>Amarillo Claro</span>
-                <span style={{ display: 'inline-block', padding: '2px 6px', background: '#d9ead3', borderRadius: '3px', marginRight: '4px' }}>Verde</span>
-                <span style={{ display: 'inline-block', padding: '2px 6px', background: '#f4cccc', borderRadius: '3px' }}>Rosa</span>
-              </div>
-            </div>
+            <button
+              onClick={handleDescargar}
+              disabled={descargando || (!colegioActual.codigo_ie && !colegioActual.nombre)}
+              style={{
+                background: '#ca8a04',
+                color: '#ffffff',
+                padding: '0.65rem 1.4rem',
+                borderRadius: '6px',
+                border: 'none',
+                fontWeight: 'bold',
+                cursor: descargando ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+              }}
+            >
+              📥 {descargando ? 'Generando...' : `Descargar REPORTE - I.E. ${colegioActual.nombre || colegioActual.codigo_ie || '070'}`}
+            </button>
           </div>
         </div>
       )}
