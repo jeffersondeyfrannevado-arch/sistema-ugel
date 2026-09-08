@@ -7,8 +7,6 @@ import StatsCard from './components/StatsCard'
 import Login from './components/Login'
 import TrainingPanel from './components/TrainingPanel'
 import AdminControlPanel from './components/AdminControlPanel'
-import NexusPanel from './components/NexusPanel'
-import MatriculaNivelesPanel from './components/MatriculaNivelesPanel'
 import { previewArchivo, procesarArchivo, logout, getCurrentUser, refreshToken } from './services/api'
 import './App.css'
 
@@ -199,14 +197,7 @@ export default function App() {
       const data = await procesarArchivo(archivo, columnasResaltadas)
       setResultado(data)
       setEstado('listo')
-
-      if (data.tipo_excel === 'NEXUS') {
-        setNavActivo('colegios_nexus')
-      } else if (data.tipo_excel === 'MATRICULA') {
-        setNavActivo('colegios_matricula')
-      } else {
-        setNavActivo('dashboard')
-      }
+      setNavActivo('dashboard')
       setTimeout(() => dashboardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50)
     } catch (e) {
       if (e.message === 'No autorizado') {
@@ -322,7 +313,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      {/* Tu Barra Lateral Original 100% Intacta */}
+      {/* Barra Lateral Original Intacta */}
       <aside className="sidebar">
         <div className="sidebar-brand">
           <strong>Matricula</strong>
@@ -343,22 +334,6 @@ export default function App() {
             disabled={!dashboardDisponible}
           >
             Panel
-          </button>
-
-          {/* Nueva opción agregada: Filtrado por Colegio NEXUS */}
-          <button
-            className={`nav-item ${navActivo === 'colegios_nexus' ? 'nav-item-active' : ''}`}
-            onClick={() => setNavActivo('colegios_nexus')}
-          >
-            Padrón Plazas NEXUS
-          </button>
-
-          {/* Nueva opción agregada: Filtrado por Colegio Matrícula */}
-          <button
-            className={`nav-item ${navActivo === 'colegios_matricula' ? 'nav-item-active' : ''}`}
-            onClick={() => setNavActivo('colegios_matricula')}
-          >
-            Fichas por Colegio (REPORTE)
           </button>
 
           <button
@@ -417,7 +392,7 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Tu Contenedor Principal Original 100% Intacto */}
+      {/* Contenedor Principal Original Intacto */}
       <div className="content-shell">
         <header className="hero-panel" ref={heroRef}>
           <div className="hero-bar">
@@ -523,35 +498,18 @@ export default function App() {
             </>
           )}
 
-          {/* Módulo Agregado: Padrón Plazas NEXUS (Filtrado por Colegio con Banner Azul) */}
-          {navActivo === 'colegios_nexus' && (
-            <NexusPanel
-              resultado={resultado}
-              onResultadoChange={(res) => {
-                setResultado(res)
-                setEstado('listo')
-              }}
-            />
-          )}
-
-          {/* Módulo Agregado: Fichas por Colegio (Filtrado por Colegio REPORTE ACTUALIZADO con 5 Colores) */}
-          {navActivo === 'colegios_matricula' && (
-            <MatriculaNivelesPanel
-              resultado={resultado}
-              onResultadoChange={(res) => {
-                setResultado(res)
-                setEstado('listo')
-              }}
-            />
-          )}
-
           {navActivo === 'descargas' && dashboardDisponible && (
             <section className="step-card" ref={descargasRef}>
               <div className="step-head">
                 <div className="step-label"><span>05</span> Descargas</div>
                 <p>Archivos disponibles para revision y entrega.</p>
               </div>
-              <ResultsPanel archivos={resultado.archivos} errores={resultado.errores} />
+              <ResultsPanel
+                archivos={resultado.archivos}
+                errores={resultado.errores}
+                colegios={resultado.colegios}
+                tipoExcel={resultado.tipo_excel}
+              />
             </section>
           )}
 
