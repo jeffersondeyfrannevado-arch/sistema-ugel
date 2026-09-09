@@ -285,8 +285,8 @@ class FiltradoColegioService
         $outSheet->mergeCells("A1:{$lastColLetter}1");
         $outSheet->mergeCells("A2:{$lastColLetter}2");
 
-        $outSheet->setCellValue('AL1', 'GOBIERNO REGIONAL DE PIURA - UNIDAD DE GESTIÓN EDUCATIVA LOCAL PIURA');
-        $outSheet->setCellValue('AL2', 'CUADRO DE PLAZAS NEXUS - I.E. ' . strtoupper($nombreColegio));
+        $outSheet->setCellValue('A1', 'GOBIERNO REGIONAL DE PIURA - UNIDAD DE GESTIÓN EDUCATIVA LOCAL PIURA');
+        $outSheet->setCellValue('A2', 'CUADRO DE PLAZAS NEXUS - I.E. ' . strtoupper($nombreColegio));
 
         $bannerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 11, 'name' => 'Calibri'],
@@ -317,12 +317,51 @@ class FiltradoColegioService
         $outSheet->getStyle("A4:{$lastColLetter}4")->applyFromArray($headerStyle);
         $outSheet->getRowDimension(4)->setRowHeight(28);
 
+        // Identificar índices de columnas especiales
+        $situacionColIdx = $colsMap['SITUACION LABORAL'] ?? 23;
+        $dniColIdx = $colsMap['DOCUMENTO DE IDENTIDAD'] ?? 35;
+
         // Datos Fila 5 en adelante
         $currentRow = 5;
         foreach ($filteredRows as $rData) {
             for ($col = 1; $col <= count($rData); $col++) {
                 $colLetter = Coordinate::stringFromColumnIndex($col);
-                $outSheet->setCellValue("{$colLetter}{$currentRow}", $rData[$col - 1] ?? '');
+                $val = $rData[$col - 1] ?? '';
+                $outSheet->setCellValue("{$colLetter}{$currentRow}", $val);
+
+                // Coloreado condicional para SITUACIÓN LABORAL (Col X / Col 24)
+                if (($col - 1) === $situacionColIdx) {
+                    $situacionStr = strtoupper(trim((string)$val));
+                    if (str_contains($situacionStr, 'NOMBRADO')) {
+                        $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9EAD3']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '274E13']],
+                        ]);
+                    } elseif (str_contains($situacionStr, 'CONTRATADO')) {
+                        $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E1D5E7']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '4C1D95']],
+                        ]);
+                    } elseif (str_contains($situacionStr, 'VACANTE')) {
+                        $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F4CCCC']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '990000']],
+                        ]);
+                    } elseif (str_contains($situacionStr, 'DESIGNADO')) {
+                        $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE5CD']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '783F04']],
+                        ]);
+                    }
+                }
+
+                // Coloreado condicional para DOCUMENTO DE IDENTIDAD en VACANTE (Col AJ)
+                if (($col - 1) === $dniColIdx && strtoupper(trim((string)$val)) === 'VACANTE') {
+                    $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F4CCCC']],
+                        'font' => ['bold' => true, 'color' => ['rgb' => '990000']],
+                    ]);
+                }
             }
 
             $outSheet->getStyle("A{$currentRow}:{$lastColLetter}{$currentRow}")->applyFromArray([
@@ -348,100 +387,126 @@ class FiltradoColegioService
     }
 
     /**
-     * Exportación de Excel REPORTE MATRÍCULA individual (5 Secciones coloreadas).
+     * Exportación de Excel REPORTE MATRÍCULA individual (5 Secciones coloreadas y formato fiel).
      */
     public function exportarMatriculaColegio($fileSource, string $codigoColegio): array
     {
         $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
+
         $sourceSpreadsheet = IOFactory::load($filePath);
         $sourceSheet = $sourceSpreadsheet->getActiveSheet();
-        $rows = $sourceSheet->toArray(null, true, true, false);
 
-        $headerRowIdx = -1;
-        foreach ($rows as $idx => $row) {
-            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
-            if (str_contains($rowStr, 'CÓDIGO IE') || str_contains($rowStr, 'CODIGO IE') || str_contains($rowStr, 'CENTRO EDUCATIVO')) {
-                $headerRowIdx = $idx;
+        $highestRow = $sourceSheet->getHighestRow();
+        $highestColString = $sourceSheet->getHighestColumn();
+        $highestColNum = Coordinate::columnIndexFromString($highestColString);
+
+        // Identificar la fila de cabeceras principales (ej. CÓDIGO IE, CENTRO EDUCATIVO)
+        $headerRowIdx = 6;
+        for ($r = 1; $r <= min(10, $highestRow); $r++) {
+            $rowText = '';
+            for ($c = 1; $c <= $highestColNum; $c++) {
+                $val = $sourceSheet->getCell([$c, $r])->getValue();
+                if ($val !== null) $rowText .= ' ' . strtoupper((string)$val);
+            }
+            if (str_contains($rowText, 'CÓDIGO IE') || str_contains($rowText, 'CODIGO IE') || str_contains($rowText, 'CENTRO EDUCATIVO')) {
+                $headerRowIdx = $r;
                 break;
             }
         }
-        if ($headerRowIdx === -1) $headerRowIdx = 5;
 
-        $headers = $rows[$headerRowIdx] ?? [];
+        // Mapear columnas en la fila de cabecera
         $colsMap = [];
-        foreach ($headers as $cIdx => $val) {
+        for ($c = 1; $c <= $highestColNum; $c++) {
+            $val = $sourceSheet->getCell([$c, $headerRowIdx])->getValue();
             if ($val !== null && trim((string)$val) !== '') {
-                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+                $colsMap[strtoupper(trim((string)$val))] = $c;
             }
         }
 
-        $ieColIdx = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 5;
-        $nombreColIdx = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 6;
+        $ieCol = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 5;
+        $nombreCol = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 6;
+        $codModCol = $colsMap['CÓDIGO MODULAR'] ?? $colsMap['CODIGO MODULAR'] ?? 4;
 
-        $filteredRows = [];
-        for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
-            $row = $rows[$i];
-            if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
+        // Encontrar filas de datos que pertenecen a este colegio
+        $matchingRows = [];
+        for ($r = $headerRowIdx + 1; $r <= $highestRow; $r++) {
+            $codIeVal = trim((string)$sourceSheet->getCell([$ieCol, $r])->getValue());
+            $nombreIeVal = trim((string)$sourceSheet->getCell([$nombreCol, $r])->getValue());
+            $codModVal = trim((string)$sourceSheet->getCell([$codModCol, $r])->getValue());
 
-            $codIe = trim((string)($row[$ieColIdx] ?? ''));
-            $nombreIe = trim((string)($row[$nombreColIdx] ?? ''));
+            if ($codIeVal === '' && $nombreIeVal === '' && $codModVal === '') continue;
 
             if (
-                strcasecmp($codIe, $codigoColegio) === 0 ||
-                strcasecmp($nombreIe, $codigoColegio) === 0 ||
-                str_contains(strtoupper($codIe), strtoupper($codigoColegio)) ||
-                str_contains(strtoupper($nombreIe), strtoupper($codigoColegio))
+                strcasecmp($codIeVal, $codigoColegio) === 0 ||
+                strcasecmp($nombreIeVal, $codigoColegio) === 0 ||
+                strcasecmp($codModVal, $codigoColegio) === 0 ||
+                ($codigoColegio !== '' && str_contains(strtoupper($codIeVal), strtoupper($codigoColegio))) ||
+                ($codigoColegio !== '' && str_contains(strtoupper($nombreIeVal), strtoupper($codigoColegio)))
             ) {
-                $filteredRows[] = $row;
+                $matchingRows[] = $r;
             }
         }
 
+        // Crear hoja de salida
         $outSpreadsheet = new Spreadsheet();
         $outSheet = $outSpreadsheet->getActiveSheet();
         $outSheet->setTitle('REPORTE - I.E. ' . substr($codigoColegio, 0, 15));
 
-        // Copiar las filas de estructura (0 a $headerRowIdx)
-        for ($r = 0; $r <= $headerRowIdx; $r++) {
-            $rowValues = $rows[$r] ?? [];
-            for ($c = 0; $c < count($rowValues); $c++) {
-                $colLetter = Coordinate::stringFromColumnIndex($c + 1);
-                $outSheet->setCellValue("{$colLetter}" . ($r + 1), $rowValues[$c] ?? '');
+        // 1. Copiar anchos de columna
+        for ($c = 1; $c <= $highestColNum; $c++) {
+            $colLetter = Coordinate::stringFromColumnIndex($c);
+            $dim = $sourceSheet->getColumnDimension($colLetter);
+            if ($dim->getWidth() > 0) {
+                $outSheet->getColumnDimension($colLetter)->setWidth($dim->getWidth());
+            } else {
+                $outSheet->getColumnDimension($colLetter)->setAutoSize(true);
             }
         }
 
-        // Aplicar los 5 colores por sección
-        $applySectionStyle = function ($range, $bgColor, $textColor = '000000', $bold = true) use ($outSheet) {
-            $outSheet->getStyle($range)->applyFromArray([
-                'font' => ['bold' => $bold, 'color' => ['rgb' => $textColor], 'size' => 9],
-                'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => $bgColor]],
-                'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER, 'wrapText' => true],
-                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'B0C4DE']]],
-            ]);
-        };
-
-        $applySectionStyle('A5:O6', 'FFFFFF'); // DETALLE DE IIEE (Blanco)
-        $applySectionStyle('F6:F6', 'FFFF00'); // CÓDIGO IE en amarillo brillante
-        $applySectionStyle('P5:AP6', 'FFF2CC'); // MATRÍCULA Y GRADOS (Amarillo Claro)
-        $applySectionStyle('AR5:AV6', 'FFFF00'); // INFORMACIÓN 2025 (Amarillo)
-        $applySectionStyle('AU6:AV6', 'FFFF00'); // COMENTARIO en amarillo brillante
-        $applySectionStyle('AW5:BK6', 'D9EAD3'); // PLAZAS Y BOLSA DE HORAS (Verde Claro)
-        $applySectionStyle('BL5:BO6', 'F4CCCC'); // FECHA BASES (Rosa Claro)
-
-        // Filas de datos
-        $currentOutRow = $headerRowIdx + 2;
-        foreach ($filteredRows as $rData) {
-            for ($c = 0; $c < count($rData); $c++) {
-                $colLetter = Coordinate::stringFromColumnIndex($c + 1);
-                $outSheet->setCellValue("{$colLetter}{$currentOutRow}", $rData[$c] ?? '');
+        // 2. Copiar celdas combinadas de la cabecera (filas 1 a $headerRowIdx)
+        foreach ($sourceSheet->getMergeCells() as $mergeRange) {
+            if (preg_match('/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/', $mergeRange, $m)) {
+                $endRow = (int)$m[4];
+                if ($endRow <= $headerRowIdx) {
+                    $outSheet->mergeCells($mergeRange);
+                }
             }
-
-            $outSheet->getStyle("A{$currentOutRow}:BO{$currentOutRow}")->applyFromArray([
-                'font' => ['size' => 9, 'name' => 'Calibri'],
-                'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'E0E0E0']]],
-            ]);
-            $currentOutRow++;
         }
 
+        // 3. Copiar contenido y estilos de las filas de cabecera (1 a $headerRowIdx)
+        for ($r = 1; $r <= $headerRowIdx; $r++) {
+            $rowDim = $sourceSheet->getRowDimension($r);
+            if ($rowDim->getRowHeight() > 0) {
+                $outSheet->getRowDimension($r)->setRowHeight($rowDim->getRowHeight());
+            }
+            for ($c = 1; $c <= $highestColNum; $c++) {
+                $srcCell = $sourceSheet->getCell([$c, $r]);
+                $dstCell = $outSheet->getCell([$c, $r]);
+                $dstCell->setValue($srcCell->getValue());
+                $outSheet->getStyle([$c, $r])->duplicate($sourceSheet->getStyle([$c, $r]));
+            }
+        }
+
+        // 4. Copiar filas de datos filtradas
+        $outRow = $headerRowIdx + 1;
+        foreach ($matchingRows as $srcRow) {
+            $rowDim = $sourceSheet->getRowDimension($srcRow);
+            if ($rowDim->getRowHeight() > 0) {
+                $outSheet->getRowDimension($outRow)->setRowHeight($rowDim->getRowHeight());
+            } else {
+                $outSheet->getRowDimension($outRow)->setRowHeight(20);
+            }
+
+            for ($c = 1; $c <= $highestColNum; $c++) {
+                $srcCell = $sourceSheet->getCell([$c, $srcRow]);
+                $dstCell = $outSheet->getCell([$c, $outRow]);
+                $dstCell->setValue($srcCell->getValue());
+                $outSheet->getStyle([$c, $outRow])->duplicate($sourceSheet->getStyle([$c, $srcRow]));
+            }
+            $outRow++;
+        }
+
+        // Guardar archivo
         $outputDir = $this->getWritableDir('matricula_colegios');
         $safeCode = preg_replace('/[^A-Za-z0-9_-]/', '_', $codigoColegio);
         $filename = "REPORTE - I.E. {$safeCode}.xlsx";
@@ -470,7 +535,15 @@ class FiltradoColegioService
         }
 
         $outputDir = $this->getWritableDir('temp_zips');
-        $zipFileName = $tipoExcel === 'NEXUS' ? 'NEXUS_Todos_Los_Colegios.zip' : 'REPORTE_Todos_Los_Colegios.zip';
+
+        if ($tipoExcel === 'NEXUS') {
+            $zipFileName = 'REPORTES_NEXUS_ORGANIZADOS_POR_COLEGIO.zip';
+            $basePath = 'REPORTES_NEXUS_ORGANIZADOS_POR_COLEGIO';
+        } else {
+            $zipFileName = 'REPORTES_ORGANIZADOS_POR_COLEGIO_Y_NIVEL.zip';
+            $basePath = 'REPORTES_ORGANIZADOS_POR_COLEGIO_Y_NIVEL/COLEGIOS_UGEL_PIURA';
+        }
+
         $zipPath = "{$outputDir}/{$zipFileName}";
 
         $zip = new \ZipArchive();
@@ -483,6 +556,17 @@ class FiltradoColegioService
             $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codmod'] ?? null;
             if (!$key) continue;
 
+            $codCode = !empty($c['codigo_ie']) ? trim((string)$c['codigo_ie']) : (!empty($c['codmod']) ? trim((string)$c['codmod']) : '000000');
+            if (strlen($codCode) < 6 && is_numeric($codCode)) {
+                $codCode = str_pad($codCode, 6, '0', STR_PAD_LEFT);
+            }
+            $nombreIe = trim((string)($c['nombre'] ?? 'IE'));
+            if ($nombreIe === '') $nombreIe = "IE_{$codCode}";
+
+            $folderName = "{$codCode} - {$nombreIe}";
+            $folderNameSafe = preg_replace('/[^\w\s\.-]/u', '_', $folderName);
+            $folderNameSafe = preg_replace('/\s+/', ' ', trim($folderNameSafe));
+
             try {
                 if ($tipoExcel === 'NEXUS') {
                     $excelRes = $this->exportarNexusColegio($fileSource, $key);
@@ -491,7 +575,8 @@ class FiltradoColegioService
                 }
 
                 if (file_exists($excelRes['path'])) {
-                    $zip->addFile($excelRes['path'], $excelRes['filename']);
+                    $zipInternalPath = "{$basePath}/{$folderNameSafe}/{$excelRes['filename']}";
+                    $zip->addFile($excelRes['path'], $zipInternalPath);
                     $generados[] = $excelRes['path'];
                 }
             } catch (Exception $e) {
@@ -505,9 +590,6 @@ class FiltradoColegioService
         // Limpiar archivos temporales individuales
         foreach ($generados as $path) {
             @unlink($path);
-        }
-        if (is_dir($tempFolder)) {
-            @rmdir($tempFolder);
         }
 
         return [
