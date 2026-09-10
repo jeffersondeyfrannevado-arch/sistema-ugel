@@ -63,68 +63,74 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $request->email)->first();
-        $rateLimitKey = $this->rateLimitKey($request);
+        try {
+            $user = User::where('email', $request->email)->first();
+            $rateLimitKey = $this->rateLimitKey($request);
 
-        if ($user && $user->isLocked()) {
-            $this->auditLogService->record($user, 'auth.login.locked', $user, [], $request);
+            if ($user && $user->isLocked()) {
+                $this->auditLogService->record($user, 'auth.login.locked', $user, [], $request);
 
-            return response()->json([
-                'message' => 'La cuenta esta bloqueada temporalmente por multiples intentos fallidos.',
-                'locked_until' => $user->locked_until?->toIso8601String(),
-            ], Response::HTTP_LOCKED);
-        }
-
-        if (RateLimiter::tooManyAttempts($rateLimitKey, (int) config('admin.security.max_login_attempts', 5))) {
-            $seconds = RateLimiter::availableIn($rateLimitKey);
-
-            return response()->json([
-                'message' => 'Demasiados intentos. Intenta nuevamente en unos minutos.',
-                'retry_after' => $seconds,
-            ], Response::HTTP_TOO_MANY_REQUESTS);
-        }
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            RateLimiter::hit($rateLimitKey, config('admin.security.lockout_minutes', 15) * 60);
-
-            if ($user) {
-                $user->increment('failed_login_attempts');
-                if ($user->failed_login_attempts >= (int) config('admin.security.max_login_attempts', 5)) {
-                    $user->forceFill([
-                        'locked_until' => now()->addMinutes((int) config('admin.security.lockout_minutes', 15)),
-                    ])->save();
-                }
+                return response()->json([
+                    'message' => 'La cuenta esta bloqueada temporalmente por multiples intentos fallidos.',
+                    'locked_until' => $user->locked_until?->toIso8601String(),
+                ], Response::HTTP_LOCKED);
             }
 
-            $this->auditLogService->record($user, 'auth.login.failed', $user?->email ?? $request->email, [], $request);
+            if (RateLimiter::tooManyAttempts($rateLimitKey, (int) config('admin.security.max_login_attempts', 5))) {
+                $seconds = RateLimiter::availableIn($rateLimitKey);
 
+                return response()->json([
+                    'message' => 'Demasiados intentos. Intenta nuevamente en unos minutos.',
+                    'retry_after' => $seconds,
+                ], Response::HTTP_TOO_MANY_REQUESTS);
+            }
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                RateLimiter::hit($rateLimitKey, config('admin.security.lockout_minutes', 15) * 60);
+
+                if ($user) {
+                    $user->increment('failed_login_attempts');
+                    if ($user->failed_login_attempts >= (int) config('admin.security.max_login_attempts', 5)) {
+                        $user->forceFill([
+                            'locked_until' => now()->addMinutes((int) config('admin.security.lockout_minutes', 15)),
+                        ])->save();
+                    }
+                }
+
+                $this->auditLogService->record($user, 'auth.login.failed', $user?->email ?? $request->email, [], $request);
+
+                return response()->json([
+                    'message' => 'Credenciales inválidas',
+                ], Response::HTTP_UNAUTHORIZED);
+            }
+
+            if (!$user->is_active) {
+                $this->auditLogService->record($user, 'auth.login.inactive', $user, [], $request);
+
+                return response()->json([
+                    'message' => 'Tu cuenta se encuentra desactivada. Contacta al administrador.'
+                ], Response::HTTP_FORBIDDEN);
+            }
+
+            $user->forceFill([
+                'failed_login_attempts' => 0,
+                'locked_until' => null,
+            ])->save();
+
+            RateLimiter::clear($rateLimitKey);
+
+            if ($user->requiresMfa()) {
+                return response()->json($this->mfaChallengeService->issue($user, $request));
+            }
+
+            Auth::login($user);
+
+            return response()->json($this->buildTokenResponse($user, $request));
+        } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Credenciales inválidas',
-            ], Response::HTTP_UNAUTHORIZED);
+                'message' => 'Error en el servidor al autenticar: ' . $e->getMessage()
+            ], 500);
         }
-
-        if (!$user->is_active) {
-            $this->auditLogService->record($user, 'auth.login.inactive', $user, [], $request);
-
-            return response()->json([
-                'message' => 'Tu cuenta se encuentra desactivada. Contacta al administrador.'
-            ], Response::HTTP_FORBIDDEN);
-        }
-
-        $user->forceFill([
-            'failed_login_attempts' => 0,
-            'locked_until' => null,
-        ])->save();
-
-        RateLimiter::clear($rateLimitKey);
-
-        if ($user->requiresMfa()) {
-            return response()->json($this->mfaChallengeService->issue($user, $request));
-        }
-
-        Auth::login($user);
-
-        return response()->json($this->buildTokenResponse($user, $request));
     }
 
     public function verifyMfa(Request $request)

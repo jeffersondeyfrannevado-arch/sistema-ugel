@@ -9,6 +9,22 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\AdminContentController;
 use App\Http\Controllers\AdminBackupController;
 
+Route::get('/health-check', function () {
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $dbStatus = 'Conectado exitosamente';
+    } catch (\Throwable $e) {
+        $dbStatus = 'Error de BD: ' . $e->getMessage();
+    }
+
+    return response()->json([
+        'status' => 'online',
+        'database' => $dbStatus,
+        'app_key' => env('APP_KEY') ? 'Configurada' : 'Faltante en Render',
+        'environment' => env('APP_ENV', 'production'),
+    ]);
+});
+
 Route::post('/register', [AuthController::class, 'register']);
 Route::post('/login', [AuthController::class, 'login']);
 Route::post('/login/mfa/verify', [AuthController::class, 'verifyMfa']);
