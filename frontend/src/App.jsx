@@ -244,8 +244,8 @@ export default function App() {
           setUser(current)
           localStorage.setItem('user', JSON.stringify(current))
         }
-      } catch {
-        if (!cancelled) {
+      } catch (err) {
+        if (!cancelled && (err.message === 'No autorizado' || err.message === 'Unauthenticated.')) {
           localStorage.removeItem('auth_token')
           localStorage.removeItem('user')
           setUser(null)
