@@ -12,11 +12,16 @@ function getHeaders(isFormData = false) {
 }
 
 async function parseJsonResponse(res, defaultMessage) {
-  const data = await res.json()
+  let data = null
+  try {
+    data = await res.json()
+  } catch (e) {
+    data = null
+  }
 
   if (!res.ok || data?.success === false) {
-    if (res.status === 401) throw new Error('No autorizado')
-    throw new Error(data?.mensaje || data?.message || defaultMessage)
+    const msg = data?.mensaje || data?.message || (typeof data?.error === 'string' ? data.error : null) || defaultMessage
+    throw new Error(msg)
   }
 
   return data
