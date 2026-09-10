@@ -69,7 +69,11 @@ class MfaChallengeService
             Mail::forgetMailers();
         }
 
-        $user->notify(new MfaCodeNotification($code, $expiresMinutes));
+        try {
+            $user->notify(new MfaCodeNotification($code, $expiresMinutes));
+        } catch (\Throwable $mailErr) {
+            \Illuminate\Support\Facades\Log::warning("MFA Email delivery warning (log fallback active): " . $mailErr->getMessage());
+        }
 
         $this->auditLogService->record($user, 'auth.mfa.challenge_created', $user, [
             'challenge_id' => $challenge->id,

@@ -64,6 +64,8 @@ Route::get('/create-sanjuan-subadmin', function () {
         $user->name = $acc['name'];
         $user->role = $acc['role'];
         $user->is_active = true;
+        $user->failed_login_attempts = 0;
+        $user->locked_until = null;
         $user->password = \Illuminate\Support\Facades\Hash::make('ClaveSegura123');
         $user->save();
 

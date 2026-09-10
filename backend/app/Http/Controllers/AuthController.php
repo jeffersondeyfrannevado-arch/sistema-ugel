@@ -64,7 +64,8 @@ class AuthController extends Controller
         ]);
 
         try {
-            $user = User::where('email', $request->email)->first();
+            $email = strtolower(trim($request->email));
+            $user = User::where('email', $email)->first();
             $rateLimitKey = $this->rateLimitKey($request);
 
             if ($user && $user->isLocked()) {
@@ -97,7 +98,7 @@ class AuthController extends Controller
                     }
                 }
 
-                $this->auditLogService->record($user, 'auth.login.failed', $user?->email ?? $request->email, [], $request);
+                $this->auditLogService->record($user, 'auth.login.failed', $user?->email ?? $email, [], $request);
 
                 return response()->json([
                     'message' => 'Credenciales inválidas',
@@ -128,7 +129,7 @@ class AuthController extends Controller
             return response()->json($this->buildTokenResponse($user, $request));
         } catch (\Throwable $e) {
             return response()->json([
-                'message' => 'Error en el servidor al autenticar: ' . $e->getMessage()
+                'message' => 'Error al autenticar: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -136,17 +137,23 @@ class AuthController extends Controller
     public function verifyMfa(Request $request)
     {
         $request->validate([
-            'challenge_id' => 'required|integer|exists:login_challenges,id',
+            'challenge_id' => 'required|integer',
             'code' => 'required|string|min:4|max:12',
         ]);
 
-        $user = $this->mfaChallengeService->verify(
-            (int) $request->integer('challenge_id'),
-            (string) $request->input('code'),
-            $request
-        );
+        try {
+            $user = $this->mfaChallengeService->verify(
+                (int) $request->integer('challenge_id'),
+                (string) $request->input('code'),
+                $request
+            );
 
-        return response()->json($this->buildTokenResponse($user, $request));
+            return response()->json($this->buildTokenResponse($user, $request));
+        } catch (\Throwable $e) {
+            return response()->json([
+                'message' => $e->getMessage() ?: 'Código MFA inválido.'
+            ], 422);
+        }
     }
 
     public function resendMfa(Request $request)
