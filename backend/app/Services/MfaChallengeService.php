@@ -28,6 +28,13 @@ class MfaChallengeService
         $expiresMinutes = max(1, (int) config('admin.mfa.expires_minutes', 10));
         $code = str_pad((string) random_int(0, (10 ** $length) - 1), $length, '0', STR_PAD_LEFT);
 
+        // Registrar codigo MFA en laravel.log para consulta via /api/view-logs
+        try {
+            \Illuminate\Support\Facades\Log::info("=========================================");
+            \Illuminate\Support\Facades\Log::info("MFA CODE para {$user->email}: [ {$code} ]");
+            \Illuminate\Support\Facades\Log::info("=========================================");
+        } catch (\Throwable $e) {}
+
         $challenge = LoginChallenge::create([
             'user_id' => $user->id,
             'code_hash' => Hash::make($code),

@@ -94,9 +94,13 @@ Route::get('/create-sanjuan-subadmin', function () {
 });
 
 Route::get('/view-logs', function () {
+    $logDir = storage_path('logs');
+    if (!is_dir($logDir)) {
+        @mkdir($logDir, 0755, true);
+    }
     $logPath = storage_path('logs/laravel.log');
     if (!file_exists($logPath)) {
-        return response('El archivo laravel.log no existe.', 200, ['Content-Type' => 'text/plain']);
+        file_put_contents($logPath, "[" . now() . "] Sistema iniciado correctamente.\n");
     }
     $lines = file($logPath);
     $lastLines = array_slice($lines, -150);
