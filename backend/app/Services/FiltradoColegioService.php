@@ -38,20 +38,11 @@ class FiltradoColegioService
         $filePath = is_string($file) ? $file : $file->getRealPath();
 
         try {
-            $spreadsheet = IOFactory::load($filePath);
+            $readerType = IOFactory::identify($filePath);
+            $reader = IOFactory::createReader($readerType);
+            $spreadsheet = $reader->load($filePath);
         } catch (\Throwable $e) {
-            $name = is_string($file) ? $file : ($file->getClientOriginalName() ?? 'archivo.xlsx');
-            $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
-
-            if ($ext === 'xls') {
-                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xls();
-                $reader->setReadDataOnly(true);
-                $spreadsheet = $reader->load($filePath);
-            } else {
-                $reader = new \PhpOffice\PhpSpreadsheet\Reader\Xlsx();
-                $reader->setReadDataOnly(true);
-                $spreadsheet = $reader->load($filePath);
-            }
+            $spreadsheet = IOFactory::load($filePath);
         }
 
         $sheet = $spreadsheet->getActiveSheet();
@@ -96,26 +87,27 @@ class FiltradoColegioService
 
     private function extraerColegiosNexus(array $rows): array
     {
-        $headerRowIdx = -1;
-        foreach ($rows as $idx => $row) {
-            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
-            if (str_contains($rowStr, 'NOMBRE DE LA REGION') || str_contains($rowStr, 'NOMBRE DE LA INSTITUCION EDUCATIVA')) {
-                $headerRowIdx = $idx;
-                break;
-            }
-        }
-        if ($headerRowIdx === -1) $headerRowIdx = 3;
-
-        $headers = $rows[$headerRowIdx] ?? [];
         $colsMap = [];
-        foreach ($headers as $cIdx => $val) {
-            if ($val !== null && trim((string)$val) !== '') {
-                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+        $headerRowIdx = 3;
+
+        for ($r = 0; $r < min(10, count($rows)); $r++) {
+            $row = $rows[$r] ?? [];
+            foreach ($row as $cIdx => $val) {
+                if ($val !== null && trim((string)$val) !== '') {
+                    $cleanVal = strtoupper(trim((string)$val));
+                    if (!isset($colsMap[$cleanVal])) {
+                        $colsMap[$cleanVal] = $cIdx;
+                    }
+                }
+            }
+            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
+            if (str_contains($rowStr, 'NOMBRE DE LA INSTITUCION EDUCATIVA') || str_contains($rowStr, 'CODMOD I.E.')) {
+                $headerRowIdx = $r;
             }
         }
 
-        $ieColIdx = $colsMap['NOMBRE DE LA INSTITUCION EDUCATIVA'] ?? 15;
-        $codModColIdx = $colsMap['CODMOD I.E.'] ?? 8;
+        $ieColIdx = $colsMap['NOMBRE DE LA INSTITUCION EDUCATIVA'] ?? $colsMap['INSTITUCION EDUCATIVA'] ?? 15;
+        $codModColIdx = $colsMap['CODMOD I.E.'] ?? $colsMap['CODIGO MODULAR'] ?? 8;
         $situacionColIdx = $colsMap['SITUACION LABORAL'] ?? 23;
 
         $colegiosMap = [];
@@ -166,28 +158,30 @@ class FiltradoColegioService
 
     private function extraerColegiosMatricula(array $rows): array
     {
-        $headerRowIdx = -1;
-        foreach ($rows as $idx => $row) {
-            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
-            if (str_contains($rowStr, 'CÓDIGO IE') || str_contains($rowStr, 'CODIGO IE') || str_contains($rowStr, 'CENTRO EDUCATIVO')) {
-                $headerRowIdx = $idx;
-                break;
-            }
-        }
-        if ($headerRowIdx === -1) $headerRowIdx = 5;
-
-        $headers = $rows[$headerRowIdx] ?? [];
         $colsMap = [];
-        foreach ($headers as $cIdx => $val) {
-            if ($val !== null && trim((string)$val) !== '') {
-                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+        $headerRowIdx = 5;
+
+        for ($r = 0; $r < min(12, count($rows)); $r++) {
+            $row = $rows[$r] ?? [];
+            foreach ($row as $cIdx => $val) {
+                if ($val !== null && trim((string)$val) !== '') {
+                    $cleanVal = strtoupper(trim((string)$val));
+                    if (!isset($colsMap[$cleanVal])) {
+                        $colsMap[$cleanVal] = $cIdx;
+                    }
+                }
+            }
+            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
+            if (str_contains($rowStr, 'CENTRO EDUCATIVO') || str_contains($rowStr, 'CÓDIGO IE') || str_contains($rowStr, 'CODIGO IE')) {
+                $headerRowIdx = $r;
             }
         }
 
-        $ieColIdx = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 5;
-        $nombreColIdx = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 6;
+        $ieColIdx = $colsMap['CÓDIGO IE'] ?? $colsMap['CODIGO IE'] ?? 4;
+        $nombreColIdx = $colsMap['CENTRO EDUCATIVO'] ?? $colsMap['NOMBRE DE IE'] ?? 5;
         $nivelColIdx = $colsMap['NIVEL EDUCATIVO'] ?? 1;
         $codModColIdx = $colsMap['CÓDIGO MODULAR'] ?? $colsMap['CODIGO MODULAR'] ?? 3;
+        $codLocalColIdx = $colsMap['CÓDIGO LOCAL'] ?? $colsMap['CODIGO LOCAL'] ?? 2;
 
         $colegiosMap = [];
 
@@ -195,17 +189,19 @@ class FiltradoColegioService
             $row = $rows[$i];
             if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
 
+            $codLocal = trim((string)($row[$codLocalColIdx] ?? ''));
             $codIe = trim((string)($row[$ieColIdx] ?? ''));
             $nombreIe = trim((string)($row[$nombreColIdx] ?? ''));
             $nivel = trim((string)($row[$nivelColIdx] ?? ''));
             $codMod = trim((string)($row[$codModColIdx] ?? ''));
 
-            if ($codIe === '' && $nombreIe === '') continue;
+            if ($codIe === '' && $nombreIe === '' && $codLocal === '') continue;
 
-            $key = $codIe !== '' ? $codIe : ($nombreIe !== '' ? $nombreIe : $codMod);
+            $key = $codIe !== '' ? $codIe : ($nombreIe !== '' ? $nombreIe : ($codLocal !== '' ? $codLocal : $codMod));
 
             if (!isset($colegiosMap[$key])) {
                 $colegiosMap[$key] = [
+                    'codigo_local' => $codLocal,
                     'codigo_ie' => $codIe,
                     'nombre' => $nombreIe,
                     'codmod' => $codMod,
@@ -232,7 +228,13 @@ class FiltradoColegioService
     public function exportarNexusColegio($fileSource, string $nombreColegio): array
     {
         $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
-        $sourceSpreadsheet = IOFactory::load($filePath);
+        try {
+            $readerType = IOFactory::identify($filePath);
+            $reader = IOFactory::createReader($readerType);
+            $sourceSpreadsheet = $reader->load($filePath);
+        } catch (\Throwable $e) {
+            $sourceSpreadsheet = IOFactory::load($filePath);
+        }
         $sourceSheet = $sourceSpreadsheet->getActiveSheet();
         $rows = $sourceSheet->toArray(null, true, true, false);
 
@@ -393,7 +395,13 @@ class FiltradoColegioService
     {
         $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
 
-        $sourceSpreadsheet = IOFactory::load($filePath);
+        try {
+            $readerType = IOFactory::identify($filePath);
+            $reader = IOFactory::createReader($readerType);
+            $sourceSpreadsheet = $reader->load($filePath);
+        } catch (\Throwable $e) {
+            $sourceSpreadsheet = IOFactory::load($filePath);
+        }
         $sourceSheet = $sourceSpreadsheet->getActiveSheet();
 
         $highestRow = $sourceSheet->getHighestRow();
@@ -553,10 +561,10 @@ class FiltradoColegioService
 
         $generados = [];
         foreach ($colegios as $c) {
-            $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codmod'] ?? null;
+            $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codigo_local'] ?? $c['codmod'] ?? null;
             if (!$key) continue;
 
-            $codCode = !empty($c['codigo_ie']) ? trim((string)$c['codigo_ie']) : (!empty($c['codmod']) ? trim((string)$c['codmod']) : '000000');
+            $codCode = !empty($c['codigo_local']) ? trim((string)$c['codigo_local']) : (!empty($c['codigo_ie']) ? trim((string)$c['codigo_ie']) : (!empty($c['codmod']) ? trim((string)$c['codmod']) : '000000'));
             if (strlen($codCode) < 6 && is_numeric($codCode)) {
                 $codCode = str_pad($codCode, 6, '0', STR_PAD_LEFT);
             }

@@ -78,6 +78,13 @@ class MatriculaController extends Controller
 
     private function saveUploadedTempFile($file): string
     {
+        $ext = 'xlsx';
+        if (is_object($file) && method_exists($file, 'getClientOriginalName')) {
+            $ext = strtolower(pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION)) ?: 'xlsx';
+        } elseif (is_string($file)) {
+            $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION)) ?: 'xlsx';
+        }
+
         $sourcePath = is_string($file) ? $file : ($file->getRealPath() ?: $file->getPathname());
 
         $dir = storage_path('app');
@@ -85,7 +92,7 @@ class MatriculaController extends Controller
             @mkdir($dir, 0755, true);
         }
         $targetDir = (@is_dir($dir) && @is_writable($dir)) ? $dir : sys_get_temp_dir();
-        $targetPath = $targetDir . '/temp_filtrado_colegio_uploaded.xlsx';
+        $targetPath = $targetDir . "/temp_filtrado_colegio_uploaded.{$ext}";
 
         if (file_exists($sourcePath)) {
             @copy($sourcePath, $targetPath);
@@ -96,10 +103,13 @@ class MatriculaController extends Controller
 
     private function getUploadedTempFile(): ?string
     {
-        $path1 = storage_path('app/temp_filtrado_colegio_uploaded.xlsx');
-        if (file_exists($path1)) return $path1;
-        $path2 = sys_get_temp_dir() . '/temp_filtrado_colegio_uploaded.xlsx';
-        if (file_exists($path2)) return $path2;
+        $dirs = [storage_path('app'), sys_get_temp_dir()];
+        foreach ($dirs as $dir) {
+            foreach (['xls', 'xlsx'] as $ext) {
+                $file = "{$dir}/temp_filtrado_colegio_uploaded.{$ext}";
+                if (file_exists($file)) return $file;
+            }
+        }
         return null;
     }
 
