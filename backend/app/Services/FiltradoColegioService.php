@@ -47,6 +47,10 @@ class FiltradoColegioService
 
         $sheet = $spreadsheet->getActiveSheet();
         $rows = $sheet->toArray(null, true, true, false);
+        try {
+            $spreadsheet->disconnectWorksheets();
+            unset($spreadsheet);
+        } catch (\Throwable $e) {}
 
         // Inspeccionar las primeras 10 filas para auto-detección
         $textBuffer = '';

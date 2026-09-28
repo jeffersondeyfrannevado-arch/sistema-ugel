@@ -96,6 +96,7 @@ class MatriculaController extends Controller
 
         if (file_exists($sourcePath)) {
             @copy($sourcePath, $targetPath);
+            @touch($targetPath);
         }
 
         return $targetPath;
@@ -104,13 +105,22 @@ class MatriculaController extends Controller
     private function getUploadedTempFile(): ?string
     {
         $dirs = [storage_path('app'), sys_get_temp_dir()];
+        $latestFile = null;
+        $latestMtime = 0;
+
         foreach ($dirs as $dir) {
             foreach (['xls', 'xlsx'] as $ext) {
                 $file = "{$dir}/temp_filtrado_colegio_uploaded.{$ext}";
-                if (file_exists($file)) return $file;
+                if (file_exists($file)) {
+                    $mtime = filemtime($file);
+                    if ($mtime >= $latestMtime) {
+                        $latestMtime = $mtime;
+                        $latestFile = $file;
+                    }
+                }
             }
         }
-        return null;
+        return $latestFile;
     }
 
     /**
@@ -119,7 +129,7 @@ class MatriculaController extends Controller
     public function procesarFiltradoColegio(Request $request)
     {
         $request->validate([
-            'archivo' => 'required|file|max:30720',
+            'archivo' => 'required|file|mimes:xlsx,xls|max:30720',
         ]);
 
         try {
