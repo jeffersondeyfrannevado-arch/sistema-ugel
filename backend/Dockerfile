@@ -20,7 +20,8 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     xml \
     bcmath \
     pdo_pgsql \
-    pgsql
+    pgsql \
+    pdo_mysql
 
 # Enable Apache rewrite module
 RUN a2enmod rewrite
@@ -34,12 +35,17 @@ WORKDIR /var/www/html
 # Copy application files
 COPY . .
 
+# Copy custom PHP configuration
+COPY .docker/php.ini $PHP_INI_DIR/conf.d/custom-php.ini
+
 # Install PHP dependencies
 RUN composer install --no-dev --optimize-autoloader
 
-# Set permissions for Laravel
-RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache \
-    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+# Set permissions for Laravel and SQLite database directory
+RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache \
+    && touch /var/www/html/database/database.sqlite \
+    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database \
+    && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
 
 # Copy Apache configuration
 COPY .docker/vhost.conf /etc/apache2/sites-available/000-default.conf
@@ -53,5 +59,5 @@ ENV PORT=80
 # Expose port
 EXPOSE 80
 
-# Start Apache with auto-migration
-CMD ["sh", "-c", "php artisan migrate --force && apache2-foreground"]
+# Start Apache with robust permissions and auto-migration
+CMD ["sh", "-c", "touch /var/www/html/database/database.sqlite && chown -R www-data:www-data /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && chmod -R 775 /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && php artisan migrate --force && chown -R www-data:www-data /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && chmod -R 775 /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && apache2-foreground"]

@@ -48,6 +48,16 @@ class AppServiceProvider extends ServiceProvider
                         'email' => 'en1774121@gmail.com',
                         'role' => 'custom',
                         'name' => 'Administrador Personalizado'
+                    ],
+                    [
+                        'email' => 'fiestasAdmin@ejemplo.com',
+                        'role' => 'user',
+                        'name' => 'fiestas'
+                    ],
+                    [
+                        'email' => 'Usuario@ejemplo.com',
+                        'role' => 'user',
+                        'name' => 'JUMAIRA'
                     ]
                 ];
 
