@@ -56,8 +56,11 @@ RUN echo "Listen \${PORT}" > /etc/apache2/ports.conf
 # Default PORT environment variable (Render/Koyeb will override this)
 ENV PORT=80
 
+# Configure entrypoint script
+RUN chmod +x /var/www/html/.docker/entrypoint.sh
+
 # Expose port
 EXPOSE 80
 
-# Start Apache with robust permissions and auto-migration
-CMD ["sh", "-c", "touch /var/www/html/database/database.sqlite && chown -R www-data:www-data /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && chmod -R 775 /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && php artisan migrate --force && chown -R www-data:www-data /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && chmod -R 775 /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache && apache2-foreground"]
+# Start container via resilient entrypoint script
+CMD ["/bin/sh", "/var/www/html/.docker/entrypoint.sh"]
