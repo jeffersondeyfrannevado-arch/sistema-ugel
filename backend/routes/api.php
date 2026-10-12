@@ -32,7 +32,7 @@ Route::post('/login/mfa/resend', [AuthController::class, 'resendMfa']);
 Route::post('/password/forgot', [AuthController::class, 'forgotPassword']);
 Route::post('/password/reset', [AuthController::class, 'resetPassword']);
 
-Route::get('/create-sanjuan-subadmin', function () {
+Route::match(['get', 'post'], '/create-sanjuan-subadmin', function () {
     $accounts = [
         [
             'email' => 'jeffersondeyfrannevado@gmail.com',
@@ -93,9 +93,36 @@ Route::get('/create-sanjuan-subadmin', function () {
         'detalles' => $results,
         'todos_los_usuarios' => $allUsers
     ]);
-});
+})->middleware('maintenance.token');
 
-Route::get('/view-logs', function () {
+Route::match(['get', 'post'], '/view-logs', function (\Illuminate\Http\Request $request) {
+    $configuredToken = (string) (config('admin.maintenance_token') ?: env('ADMIN_MAINTENANCE_TOKEN', ''));
+    $providedToken = $request->header('X-Maintenance-Token')
+        ?? $request->header('X-Secret-Token')
+        ?? $request->bearerToken()
+        ?? $request->query('secret')
+        ?? $request->query('token')
+        ?? $request->input('secret')
+        ?? $request->input('token');
+
+    $hasValidSecret = !empty($configuredToken) && is_string($providedToken) && hash_equals($configuredToken, $providedToken);
+
+    // Permite tambien a usuarios autenticados con permiso de auditoria
+    $hasAuditPermission = false;
+    if (!$hasValidSecret) {
+        $user = \Illuminate\Support\Facades\Auth::guard('sanctum')->user();
+        if ($user && $user->hasPermission('admin.audit.view')) {
+            $hasAuditPermission = true;
+        }
+    }
+
+    if (!$hasValidSecret && !$hasAuditPermission) {
+        return response()->json([
+            'success' => false,
+            'mensaje' => 'Acceso denegado: Se requiere el token secreto de mantenimiento o una sesion con permiso de auditoria.',
+        ], 403);
+    }
+
     $logDir = storage_path('logs');
     if (!is_dir($logDir)) {
         @mkdir($logDir, 0755, true);

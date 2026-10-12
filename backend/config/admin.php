@@ -31,4 +31,6 @@ return [
         'directory' => env('ADMIN_BACKUP_DIRECTORY', 'admin_backups'),
         'schedule' => env('ADMIN_BACKUP_SCHEDULE', '02:00'),
     ],
+
+    'maintenance_token' => env('ADMIN_MAINTENANCE_TOKEN'),
 ];

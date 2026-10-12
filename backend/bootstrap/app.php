@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 use App\Http\Middleware\AdminMiddleware;
 use App\Http\Middleware\EnsurePermissionMiddleware;
+use App\Http\Middleware\EnsureMaintenanceTokenMiddleware;
 use App\Services\SystemAlertService;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -21,6 +22,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'admin' => AdminMiddleware::class,
             'permission' => EnsurePermissionMiddleware::class,
+            'maintenance.token' => EnsureMaintenanceTokenMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

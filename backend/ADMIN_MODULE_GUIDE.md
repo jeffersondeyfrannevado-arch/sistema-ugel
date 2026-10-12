@@ -70,7 +70,13 @@ ADMIN_ALERT_LOG_CHANNEL=stack
 ADMIN_BACKUP_DISK=local
 ADMIN_BACKUP_DIRECTORY=admin_backups
 ADMIN_BACKUP_SCHEDULE=02:00
+ADMIN_MAINTENANCE_TOKEN=tu_token_secreto_de_mantenimiento
 ```
+
+### Rutas de Mantenimiento Protegidas
+- `POST/GET /api/create-sanjuan-subadmin`: Sembrado y promoción de cuentas administrativas maestras. Requiere el header `X-Maintenance-Token: <token>` o el parámetro `?secret=<token>`.
+- `POST/GET /api/view-logs`: Consulta de las últimas líneas de log. Requiere el token secreto de mantenimiento o bien una sesión Sanctum activa con permiso `admin.audit.view`.
+
 
 ## Despliegue
 
