@@ -172,6 +172,7 @@ class MatriculaController extends Controller
         }
 
         try {
+            @set_time_limit(180);
             if ($tipoExcel === 'NEXUS') {
                 $res = $this->filtradoColegioService->exportarNexusColegio($uploadedPath, $colegio);
             } else {
@@ -189,6 +190,8 @@ class MatriculaController extends Controller
      */
     public function exportarZipColegios(Request $request)
     {
+        @set_time_limit(0);
+        @ini_set('memory_limit', '1024M');
         $uploadedPath = $this->getUploadedTempFile();
 
         if (!$uploadedPath || !file_exists($uploadedPath)) {
@@ -197,7 +200,7 @@ class MatriculaController extends Controller
 
         try {
             $res = $this->filtradoColegioService->exportarZipColegios($uploadedPath);
-            return response()->download($res['path'], $res['filename']);
+            return response()->download($res['path'], $res['filename'])->deleteFileAfterSend(true);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Error al exportar paquete ZIP por colegios: ' . $e->getMessage()], 500);
         }

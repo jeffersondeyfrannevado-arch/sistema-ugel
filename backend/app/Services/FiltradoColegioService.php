@@ -11,6 +11,7 @@ use PhpOffice\PhpSpreadsheet\Style\Border;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Shared\Date;
 
 class FiltradoColegioService
 {
@@ -40,6 +41,9 @@ class FiltradoColegioService
         try {
             $readerType = IOFactory::identify($filePath);
             $reader = IOFactory::createReader($readerType);
+            if (method_exists($reader, 'setReadDataOnly')) {
+                $reader->setReadDataOnly(true);
+            }
             $spreadsheet = $reader->load($filePath);
         } catch (\Throwable $e) {
             $spreadsheet = IOFactory::load($filePath);
@@ -227,85 +231,37 @@ class FiltradoColegioService
     }
 
     /**
-     * Exportación de Excel NEXUS individual (Banner azul en filas 1-2).
+     * Construye y guarda el archivo Excel NEXUS para un colegio dado a partir de sus filas ya filtradas.
+     * Aplica el Banner Azul oficial (Filas 1-3), cabecera oscura (Fila 4) y coloreado condicional oficial.
      */
-    public function exportarNexusColegio($fileSource, string $nombreColegio): array
+    public function generarExcelNexusColegioDesdeFilas(string $nombreColegio, array $filteredRows, array $headers, array $colsMap = []): array
     {
-        $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
-        try {
-            $readerType = IOFactory::identify($filePath);
-            $reader = IOFactory::createReader($readerType);
-            $sourceSpreadsheet = $reader->load($filePath);
-        } catch (\Throwable $e) {
-            $sourceSpreadsheet = IOFactory::load($filePath);
-        }
-        $sourceSheet = $sourceSpreadsheet->getActiveSheet();
-        $rows = $sourceSheet->toArray(null, true, true, false);
-
-        $headerRowIdx = -1;
-        foreach ($rows as $idx => $row) {
-            $rowStr = strtoupper(implode(' ', array_filter($row, fn($v) => $v !== null)));
-            if (str_contains($rowStr, 'NOMBRE DE LA REGION') || str_contains($rowStr, 'NOMBRE DE LA INSTITUCION EDUCATIVA')) {
-                $headerRowIdx = $idx;
-                break;
-            }
-        }
-        if ($headerRowIdx === -1) $headerRowIdx = 3;
-
-        $headers = $rows[$headerRowIdx] ?? [];
-        $colsMap = [];
-        foreach ($headers as $cIdx => $val) {
-            if ($val !== null && trim((string)$val) !== '') {
-                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
-            }
-        }
-
-        $ieColIdx = $colsMap['NOMBRE DE LA INSTITUCION EDUCATIVA'] ?? 15;
-        $codModColIdx = $colsMap['CODMOD I.E.'] ?? 8;
-
-        $filteredRows = [];
-        for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
-            $row = $rows[$i];
-            if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
-
-            $nombreIe = trim((string)($row[$ieColIdx] ?? ''));
-            $codMod = trim((string)($row[$codModColIdx] ?? ''));
-
-            if (
-                strcasecmp($nombreIe, $nombreColegio) === 0 ||
-                strcasecmp($codMod, $nombreColegio) === 0 ||
-                str_contains(strtoupper($nombreIe), strtoupper($nombreColegio))
-            ) {
-                $filteredRows[] = $row;
-            }
-        }
-
         $outSpreadsheet = new Spreadsheet();
         $outSheet = $outSpreadsheet->getActiveSheet();
-        $outSheet->setTitle('NEXUS - ' . substr($nombreColegio, 0, 15));
+        $safeSheetTitle = 'NEXUS - ' . substr(preg_replace('/[\\\\\/?*\[\]:]/', '', $nombreColegio), 0, 20);
+        $outSheet->setTitle($safeSheetTitle);
 
         $totalCols = max(66, count($headers));
         $lastColLetter = Coordinate::stringFromColumnIndex($totalCols);
 
-        // Banner Azul en Filas 1-2
+        // Banner Azul Superior en Filas 1, 2 y 3 (Idéntico a las capturas oficiales)
         $outSheet->mergeCells("A1:{$lastColLetter}1");
         $outSheet->mergeCells("A2:{$lastColLetter}2");
+        $outSheet->mergeCells("A3:{$lastColLetter}3");
 
-        $outSheet->setCellValue('A1', 'GOBIERNO REGIONAL DE PIURA - UNIDAD DE GESTIÓN EDUCATIVA LOCAL PIURA');
-        $outSheet->setCellValue('A2', 'CUADRO DE PLAZAS NEXUS - I.E. ' . strtoupper($nombreColegio));
+        $outSheet->setCellValue('A2', 'GOBIERNO REGIONAL DE PIURA - UNIDAD DE GESTION EDUCATIVA LOCAL PIURA');
+        $outSheet->setCellValue('A3', 'CUADRO DE PLAZAS NEXUS - I.E. ' . strtoupper($nombreColegio));
 
         $bannerStyle = [
             'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF'], 'size' => 11, 'name' => 'Calibri'],
             'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => '1B365D']],
-            'alignment' => ['horizontal' => Alignment::HORIZONTAL_RIGHT, 'vertical' => Alignment::VERTICAL_CENTER],
+            'alignment' => ['horizontal' => Alignment::HORIZONTAL_CENTER, 'vertical' => Alignment::VERTICAL_CENTER],
         ];
 
-        $outSheet->getStyle("A1:{$lastColLetter}2")->applyFromArray($bannerStyle);
-        $outSheet->getRowDimension(1)->setRowHeight(22);
+        $outSheet->getStyle("A1:{$lastColLetter}3")->applyFromArray($bannerStyle);
+        $outSheet->getRowDimension(1)->setRowHeight(18);
         $outSheet->getRowDimension(2)->setRowHeight(22);
-
-        // Fila 3 vacía
-        $outSheet->getRowDimension(3)->setRowHeight(12);
+        $outSheet->getRowDimension(3)->setRowHeight(22);
 
         // Cabecera Fila 4
         for ($col = 1; $col <= count($headers); $col++) {
@@ -321,9 +277,8 @@ class FiltradoColegioService
         ];
 
         $outSheet->getStyle("A4:{$lastColLetter}4")->applyFromArray($headerStyle);
-        $outSheet->getRowDimension(4)->setRowHeight(28);
+        $outSheet->getRowDimension(4)->setRowHeight(32);
 
-        // Identificar índices de columnas especiales
         $situacionColIdx = $colsMap['SITUACION LABORAL'] ?? 23;
         $dniColIdx = $colsMap['DOCUMENTO DE IDENTIDAD'] ?? 35;
 
@@ -333,39 +288,49 @@ class FiltradoColegioService
             for ($col = 1; $col <= count($rData); $col++) {
                 $colLetter = Coordinate::stringFromColumnIndex($col);
                 $val = $rData[$col - 1] ?? '';
+                $cIdx = $col - 1;
+                $headerName = strtoupper(trim((string)($headers[$cIdx] ?? '')));
+
+                // Formatear fechas legibles si es timestamp serial numérico de Excel
+                if (str_contains($headerName, 'FECHA') && is_numeric($val) && $val > 1000 && $val < 100000) {
+                    try {
+                        $val = Date::excelToDateTimeObject((float)$val)->format('n/j/Y');
+                    } catch (\Throwable $e) {}
+                }
+
                 $outSheet->setCellValue("{$colLetter}{$currentRow}", $val);
 
                 // Coloreado condicional para SITUACIÓN LABORAL (Col X / Col 24)
-                if (($col - 1) === $situacionColIdx) {
+                if ($cIdx === $situacionColIdx) {
                     $situacionStr = strtoupper(trim((string)$val));
                     if (str_contains($situacionStr, 'NOMBRADO')) {
                         $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
-                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D9EAD3']],
-                            'font' => ['bold' => true, 'color' => ['rgb' => '274E13']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'D4EDDA']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '155724']],
                         ]);
                     } elseif (str_contains($situacionStr, 'CONTRATADO')) {
                         $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
-                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E1D5E7']],
-                            'font' => ['bold' => true, 'color' => ['rgb' => '4C1D95']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'E8DAEF']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '6C3483']],
                         ]);
                     } elseif (str_contains($situacionStr, 'VACANTE')) {
                         $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
-                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F4CCCC']],
-                            'font' => ['bold' => true, 'color' => ['rgb' => '990000']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8D7DA']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '721C24']],
                         ]);
                     } elseif (str_contains($situacionStr, 'DESIGNADO')) {
                         $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
-                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FCE5CD']],
-                            'font' => ['bold' => true, 'color' => ['rgb' => '783F04']],
+                            'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'FFE6CC']],
+                            'font' => ['bold' => true, 'color' => ['rgb' => '8A4B08']],
                         ]);
                     }
                 }
 
                 // Coloreado condicional para DOCUMENTO DE IDENTIDAD en VACANTE (Col AJ)
-                if (($col - 1) === $dniColIdx && strtoupper(trim((string)$val)) === 'VACANTE') {
+                if ($cIdx === $dniColIdx && strtoupper(trim((string)$val)) === 'VACANTE') {
                     $outSheet->getStyle("{$colLetter}{$currentRow}")->applyFromArray([
-                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F4CCCC']],
-                        'font' => ['bold' => true, 'color' => ['rgb' => '990000']],
+                        'fill' => ['fillType' => Fill::FILL_SOLID, 'startColor' => ['rgb' => 'F8D7DA']],
+                        'font' => ['bold' => true, 'color' => ['rgb' => '721C24']],
                     ]);
                 }
             }
@@ -373,23 +338,116 @@ class FiltradoColegioService
             $outSheet->getStyle("A{$currentRow}:{$lastColLetter}{$currentRow}")->applyFromArray([
                 'font' => ['size' => 9, 'name' => 'Calibri'],
                 'borders' => ['allBorders' => ['borderStyle' => Border::BORDER_THIN, 'color' => ['rgb' => 'D9D9D9']]],
+                'alignment' => ['vertical' => Alignment::VERTICAL_CENTER],
             ]);
             $outSheet->getRowDimension($currentRow)->setRowHeight(20);
             $currentRow++;
         }
 
+        // Anchos de columna predeterminados para máxima velocidad y legibilidad oficial
+        $outSheet->getDefaultColumnDimension()->setWidth(14);
+        $outSheet->getColumnDimension('A')->setWidth(18); // REGION
+        $outSheet->getColumnDimension('B')->setWidth(26); // UNIDAD EJECUTORA
+        $outSheet->getColumnDimension('C')->setWidth(20); // ORGANO INTERMEDIO
+        $outSheet->getColumnDimension('G')->setWidth(18); // GESTION
+        $outSheet->getColumnDimension('I')->setWidth(14); // CODMOD
+        $outSheet->getColumnDimension('L')->setWidth(14); // CODIGO LOCAL
+        $outSheet->getColumnDimension('P')->setWidth(34); // NOMBRE DE LA INSTITUCION EDUCATIVA
+        $outSheet->getColumnDimension('S')->setWidth(16); // CODIGO PLAZA
+        $outSheet->getColumnDimension('X')->setWidth(20); // SITUACION LABORAL
+        $outSheet->getColumnDimension('Y')->setWidth(32); // MOTIVO DE VACANTE
+        $outSheet->getColumnDimension('AB')->setWidth(22); // CARGO
+        $outSheet->getColumnDimension('AJ')->setWidth(16); // DOCUMENTO DE IDENTIDAD
+        $outSheet->getColumnDimension('AP')->setWidth(20); // APELLIDO PATERNO
+        $outSheet->getColumnDimension('AQ')->setWidth(20); // APELLIDO MATERNO
+        $outSheet->getColumnDimension('AR')->setWidth(22); // NOMBRES
+
         $outputDir = $this->getWritableDir('nexus_output');
-        $safeName = preg_replace('/[^A-Za-z0-9_-]/', '_', $nombreColegio);
+        $safeName = preg_replace('/[^\w\s\.-]/u', '_', $nombreColegio);
+        $safeName = preg_replace('/\s+/', ' ', trim($safeName));
+        if ($safeName === '') $safeName = 'IE';
         $filename = "NEXUS - {$safeName}.xlsx";
         $fullPath = "{$outputDir}/{$filename}";
 
         $writer = new Xlsx($outSpreadsheet);
         $writer->save($fullPath);
 
+        $outSpreadsheet->disconnectWorksheets();
+        unset($outSpreadsheet, $writer);
+
         return [
             'filename' => $filename,
             'path' => $fullPath,
+            'registros' => count($filteredRows),
         ];
+    }
+
+    /**
+     * Exportación de Excel NEXUS individual (Banner azul en filas 1-3).
+     */
+    public function exportarNexusColegio($fileSource, string $nombreColegio): array
+    {
+        $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
+        try {
+            $readerType = IOFactory::identify($filePath);
+            $reader = IOFactory::createReader($readerType);
+            if (method_exists($reader, 'setReadDataOnly')) {
+                $reader->setReadDataOnly(true);
+            }
+            $sourceSpreadsheet = $reader->load($filePath);
+        } catch (\Throwable $e) {
+            $sourceSpreadsheet = IOFactory::load($filePath);
+        }
+        $sourceSheet = $sourceSpreadsheet->getActiveSheet();
+        $rows = $sourceSheet->toArray(null, true, true, false);
+
+        try {
+            $sourceSpreadsheet->disconnectWorksheets();
+            unset($sourceSpreadsheet);
+        } catch (\Throwable $e) {}
+
+        $headerRowIdx = -1;
+        for ($idx = 0; $idx < min(12, count($rows)); $idx++) {
+            $rowStr = strtoupper(implode(' ', array_filter($rows[$idx] ?? [], fn($v) => $v !== null)));
+            if (str_contains($rowStr, 'NOMBRE DE LA REGION') || str_contains($rowStr, 'NOMBRE DE LA INSTITUCION EDUCATIVA')) {
+                $headerRowIdx = $idx;
+                break;
+            }
+        }
+        if ($headerRowIdx === -1) $headerRowIdx = 4;
+
+        $headers = $rows[$headerRowIdx] ?? [];
+        $colsMap = [];
+        foreach ($headers as $cIdx => $val) {
+            if ($val !== null && trim((string)$val) !== '') {
+                $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+            }
+        }
+
+        $ieColIdx = $colsMap['NOMBRE DE LA INSTITUCION EDUCATIVA'] ?? 15;
+        $codModColIdx = $colsMap['CODMOD I.E.'] ?? 8;
+        $codLocalColIdx = $colsMap['CODIGO LOCAL'] ?? 11;
+
+        $filteredRows = [];
+        for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
+            $row = $rows[$i];
+            if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
+
+            $nombreIe = trim((string)($row[$ieColIdx] ?? ''));
+            $codMod = trim((string)($row[$codModColIdx] ?? ''));
+            $codLocal = trim((string)($row[$codLocalColIdx] ?? ''));
+
+            if (
+                strcasecmp($nombreIe, $nombreColegio) === 0 ||
+                strcasecmp($codMod, $nombreColegio) === 0 ||
+                strcasecmp($codLocal, $nombreColegio) === 0 ||
+                str_contains(strtoupper($nombreIe), strtoupper($nombreColegio))
+            ) {
+                $filteredRows[] = $row;
+            }
+        }
+
+        return $this->generarExcelNexusColegioDesdeFilas($nombreColegio, $filteredRows, $headers, $colsMap);
     }
 
     /**
@@ -564,36 +622,121 @@ class FiltradoColegioService
         }
 
         $generados = [];
-        foreach ($colegios as $c) {
-            $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codigo_local'] ?? $c['codmod'] ?? null;
-            if (!$key) continue;
 
-            $codCode = !empty($c['codigo_local']) ? trim((string)$c['codigo_local']) : (!empty($c['codigo_ie']) ? trim((string)$c['codigo_ie']) : (!empty($c['codmod']) ? trim((string)$c['codmod']) : '000000'));
-            if (strlen($codCode) < 6 && is_numeric($codCode)) {
-                $codCode = str_pad($codCode, 6, '0', STR_PAD_LEFT);
+        if ($tipoExcel === 'NEXUS') {
+            @set_time_limit(600);
+            @ini_set('memory_limit', '512M');
+
+            $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
+            try {
+                $readerType = IOFactory::identify($filePath);
+                $reader = IOFactory::createReader($readerType);
+                if (method_exists($reader, 'setReadDataOnly')) {
+                    $reader->setReadDataOnly(true);
+                }
+                $sourceSpreadsheet = $reader->load($filePath);
+            } catch (\Throwable $e) {
+                $sourceSpreadsheet = IOFactory::load($filePath);
             }
-            $nombreIe = trim((string)($c['nombre'] ?? 'IE'));
-            if ($nombreIe === '') $nombreIe = "IE_{$codCode}";
-
-            $folderName = "{$codCode} - {$nombreIe}";
-            $folderNameSafe = preg_replace('/[^\w\s\.-]/u', '_', $folderName);
-            $folderNameSafe = preg_replace('/\s+/', ' ', trim($folderNameSafe));
+            $sourceSheet = $sourceSpreadsheet->getActiveSheet();
+            $rows = $sourceSheet->toArray(null, true, true, false);
 
             try {
-                if ($tipoExcel === 'NEXUS') {
-                    $excelRes = $this->exportarNexusColegio($fileSource, $key);
-                } else {
-                    $excelRes = $this->exportarMatriculaColegio($fileSource, $key);
+                $sourceSpreadsheet->disconnectWorksheets();
+                unset($sourceSpreadsheet);
+            } catch (\Throwable $e) {}
+
+            $headerRowIdx = -1;
+            for ($idx = 0; $idx < min(12, count($rows)); $idx++) {
+                $rowStr = strtoupper(implode(' ', array_filter($rows[$idx] ?? [], fn($v) => $v !== null)));
+                if (str_contains($rowStr, 'NOMBRE DE LA REGION') || str_contains($rowStr, 'NOMBRE DE LA INSTITUCION EDUCATIVA')) {
+                    $headerRowIdx = $idx;
+                    break;
+                }
+            }
+            if ($headerRowIdx === -1) $headerRowIdx = 4;
+
+            $headers = $rows[$headerRowIdx] ?? [];
+            $colsMap = [];
+            foreach ($headers as $cIdx => $val) {
+                if ($val !== null && trim((string)$val) !== '') {
+                    $colsMap[strtoupper(trim((string)$val))] = $cIdx;
+                }
+            }
+
+            $ieColIdx = $colsMap['NOMBRE DE LA INSTITUCION EDUCATIVA'] ?? 15;
+            $codModColIdx = $colsMap['CODMOD I.E.'] ?? 8;
+            $codLocalColIdx = $colsMap['CODIGO LOCAL'] ?? 11;
+
+            // Agrupar filas de datos en memoria por colegio en una única pasada
+            $colegiosRowsMap = [];
+            for ($i = $headerRowIdx + 1; $i < count($rows); $i++) {
+                $row = $rows[$i];
+                if (empty(array_filter($row, fn($v) => $v !== null && trim((string)$v) !== ''))) continue;
+
+                $nombreIe = trim((string)($row[$ieColIdx] ?? ''));
+                $codMod = trim((string)($row[$codModColIdx] ?? ''));
+
+                $groupKey = $nombreIe !== '' ? $nombreIe : ($codMod !== '' ? "IE_{$codMod}" : 'COLEGIO_SIN_NOMBRE');
+                $colegiosRowsMap[$groupKey][] = $row;
+            }
+
+            // Generar cada archivo individual para el ZIP sin sobrecargar memoria
+            foreach ($colegiosRowsMap as $nombreColegio => $schoolRows) {
+                $codLocal = '000000';
+                foreach ($schoolRows as $sr) {
+                    $clVal = trim((string)($sr[$codLocalColIdx] ?? ''));
+                    if ($clVal !== '' && $clVal !== '0') {
+                        $codLocal = $clVal;
+                        break;
+                    }
+                }
+                if (strlen($codLocal) < 6 && is_numeric($codLocal)) {
+                    $codLocal = str_pad($codLocal, 6, '0', STR_PAD_LEFT);
                 }
 
-                if (file_exists($excelRes['path'])) {
-                    $zipInternalPath = "{$basePath}/{$folderNameSafe}/{$excelRes['filename']}";
-                    $zip->addFile($excelRes['path'], $zipInternalPath);
-                    $generados[] = $excelRes['path'];
+                $folderName = "{$codLocal} - {$nombreColegio}";
+                $folderNameSafe = preg_replace('/[^\w\s\.-]/u', '_', $folderName);
+                $folderNameSafe = preg_replace('/\s+/', ' ', trim($folderNameSafe));
+
+                try {
+                    $excelRes = $this->generarExcelNexusColegioDesdeFilas($nombreColegio, $schoolRows, $headers, $colsMap);
+                    if (file_exists($excelRes['path'])) {
+                        $zipInternalPath = "{$basePath}/{$folderNameSafe}/{$excelRes['filename']}";
+                        $zip->addFile($excelRes['path'], $zipInternalPath);
+                        $generados[] = $excelRes['path'];
+                    }
+                } catch (\Throwable $e) {
+                    continue;
                 }
-            } catch (Exception $e) {
-                // Continuar procesando los demás colegios
-                continue;
+            }
+        } else {
+            // Flujo original para Reporte de Matrícula (3 Niveles)
+            foreach ($colegios as $c) {
+                $key = $c['nombre'] ?? $c['codigo_ie'] ?? $c['codigo_local'] ?? $c['codmod'] ?? null;
+                if (!$key) continue;
+
+                $codCode = !empty($c['codigo_local']) ? trim((string)$c['codigo_local']) : (!empty($c['codigo_ie']) ? trim((string)$c['codigo_ie']) : (!empty($c['codmod']) ? trim((string)$c['codmod']) : '000000'));
+                if (strlen($codCode) < 6 && is_numeric($codCode)) {
+                    $codCode = str_pad($codCode, 6, '0', STR_PAD_LEFT);
+                }
+                $nombreIe = trim((string)($c['nombre'] ?? 'IE'));
+                if ($nombreIe === '') $nombreIe = "IE_{$codCode}";
+
+                $folderName = "{$codCode} - {$nombreIe}";
+                $folderNameSafe = preg_replace('/[^\w\s\.-]/u', '_', $folderName);
+                $folderNameSafe = preg_replace('/\s+/', ' ', trim($folderNameSafe));
+
+                try {
+                    $excelRes = $this->exportarMatriculaColegio($fileSource, $key);
+                    if (file_exists($excelRes['path'])) {
+                        $zipInternalPath = "{$basePath}/{$folderNameSafe}/{$excelRes['filename']}";
+                        $zip->addFile($excelRes['path'], $zipInternalPath);
+                        $generados[] = $excelRes['path'];
+                    }
+                } catch (\Throwable $e) {
+                    continue;
+                }
             }
         }
 

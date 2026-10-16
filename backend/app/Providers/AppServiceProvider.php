@@ -28,11 +28,11 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
-            if (!\Illuminate\Support\Facades\Schema::hasTable('users')) {
+            if (!\Illuminate\Support\Facades\Schema::hasTable('users') || !\Illuminate\Support\Facades\Schema::hasTable('nexus_plazas')) {
                 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
             }
 
-            if (\Illuminate\Support\Facades\Schema::hasTable('users') && !\App\Models\User::where('email', 'jeffersondeyfrannevado@gmail.com')->exists()) {
+            if (\Illuminate\Support\Facades\Schema::hasTable('users')) {
                 $accounts = [
                     [
                         'email' => 'jeffersondeyfrannevado@gmail.com',

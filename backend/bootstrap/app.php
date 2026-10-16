@@ -31,6 +31,12 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            if ($e instanceof \Illuminate\Validation\ValidationException ||
+                $e instanceof \Illuminate\Auth\AuthenticationException ||
+                $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface) {
+                return null;
+            }
+
             if ($e instanceof QueryException || $e instanceof \PDOException) {
                 app(SystemAlertService::class)->reportException($e, $request);
 
