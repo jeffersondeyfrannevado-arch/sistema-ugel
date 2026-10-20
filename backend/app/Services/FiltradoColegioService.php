@@ -553,7 +553,9 @@ class FiltradoColegioService
                 $srcCell = $sourceSheet->getCell([$c, $r]);
                 $dstCell = $outSheet->getCell([$c, $r]);
                 $dstCell->setValue($srcCell->getValue());
-                $outSheet->getStyle([$c, $r])->duplicate($sourceSheet->getStyle([$c, $r]));
+                try {
+                    $outSheet->duplicateStyle($sourceSheet->getStyle([$c, $r]), $dstCell->getCoordinate());
+                } catch (\Throwable $e) {}
             }
         }
 
@@ -571,7 +573,9 @@ class FiltradoColegioService
                 $srcCell = $sourceSheet->getCell([$c, $srcRow]);
                 $dstCell = $outSheet->getCell([$c, $outRow]);
                 $dstCell->setValue($srcCell->getValue());
-                $outSheet->getStyle([$c, $outRow])->duplicate($sourceSheet->getStyle([$c, $srcRow]));
+                try {
+                    $outSheet->duplicateStyle($sourceSheet->getStyle([$c, $srcRow]), $dstCell->getCoordinate());
+                } catch (\Throwable $e) {}
             }
             $outRow++;
         }

@@ -65,7 +65,7 @@ class AuthController extends Controller
 
         try {
             $email = strtolower(trim($request->email));
-            $user = User::where('email', $email)->first();
+            $user = User::whereRaw('LOWER(email) = ?', [$email])->first();
             $rateLimitKey = $this->rateLimitKey($request);
 
             if ($user && $user->isLocked()) {

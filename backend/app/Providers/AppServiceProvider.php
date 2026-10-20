@@ -50,12 +50,12 @@ class AppServiceProvider extends ServiceProvider
                         'name' => 'Administrador Personalizado'
                     ],
                     [
-                        'email' => 'fiestasAdmin@ejemplo.com',
+                        'email' => 'fiestasadmin@ejemplo.com',
                         'role' => 'user',
                         'name' => 'fiestas'
                     ],
                     [
-                        'email' => 'Usuario@ejemplo.com',
+                        'email' => 'usuario@ejemplo.com',
                         'role' => 'user',
                         'name' => 'JUMAIRA'
                     ]
