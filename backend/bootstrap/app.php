@@ -19,6 +19,9 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Railway/Render terminan HTTPS en su proxy: confiar en sus cabeceras X-Forwarded-*
+        $middleware->trustProxies(at: '*');
+
         $middleware->alias([
             'admin' => AdminMiddleware::class,
             'permission' => EnsurePermissionMiddleware::class,

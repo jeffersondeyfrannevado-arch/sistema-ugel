@@ -23,8 +23,9 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     pgsql \
     pdo_mysql
 
-# Enable Apache rewrite module
-RUN a2enmod rewrite
+# Enable Apache rewrite module and keep a single MPM (prefork, required by mod_php)
+RUN a2dismod -f mpm_event mpm_worker || true \
+    && a2enmod mpm_prefork rewrite headers
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
@@ -39,7 +40,8 @@ COPY . .
 COPY .docker/php.ini $PHP_INI_DIR/conf.d/custom-php.ini
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader
+ENV COMPOSER_ALLOW_SUPERUSER=1
+RUN composer install --no-dev --optimize-autoloader --no-interaction --prefer-dist
 
 # Set permissions for Laravel and SQLite database directory
 RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstrap/cache \
@@ -53,11 +55,12 @@ COPY .docker/vhost.conf /etc/apache2/sites-available/000-default.conf
 # Configure Apache ports to listen on the dynamic $PORT environment variable
 RUN echo "Listen \${PORT}" > /etc/apache2/ports.conf
 
-# Default PORT environment variable (Render/Koyeb will override this)
+# Default PORT environment variable (Railway/Render will override this)
 ENV PORT=80
 
-# Configure entrypoint script
-RUN chmod +x /var/www/html/.docker/entrypoint.sh
+# Configure entrypoint script (strip Windows CRLF line endings just in case)
+RUN sed -i 's/\r$//' /var/www/html/.docker/entrypoint.sh \
+    && chmod +x /var/www/html/.docker/entrypoint.sh
 
 # Expose port
 EXPOSE 80
