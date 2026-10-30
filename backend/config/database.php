@@ -87,9 +87,22 @@ return [
 
         'pgsql' => [
             'driver' => 'pgsql',
-            'url' => env('DB_URL'),
+            'url' => (function () {
+                $url = env('DB_URL') ?: env('DATABASE_URL');
+                if ($url && str_contains($url, 'pooler.supabase.com:5432')) {
+                    $url = str_replace('pooler.supabase.com:5432', 'pooler.supabase.com:6543', $url);
+                }
+                return $url;
+            })(),
             'host' => env('DB_HOST', '127.0.0.1'),
-            'port' => env('DB_PORT', '5432'),
+            'port' => (function () {
+                $host = (string) env('DB_HOST', '127.0.0.1');
+                $port = (string) env('DB_PORT', '5432');
+                if (str_contains($host, 'pooler.supabase.com') && $port === '5432') {
+                    return '6543';
+                }
+                return $port;
+            })(),
             'database' => env('DB_DATABASE', 'laravel'),
             'username' => env('DB_USERNAME', 'root'),
             'password' => env('DB_PASSWORD', ''),
@@ -100,6 +113,7 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'options' => [
                 \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 5),
+                \PDO::ATTR_EMULATE_PREPARES => true,
             ],
         ],
 
