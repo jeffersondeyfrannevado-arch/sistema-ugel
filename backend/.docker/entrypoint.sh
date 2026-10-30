@@ -9,9 +9,19 @@ cd "$APP_DIR" || exit 1
 rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* 2>/dev/null
 [ -f /etc/apache2/mods-enabled/mpm_prefork.load ] || a2enmod mpm_prefork >/dev/null 2>&1
 
-# Puerto dinamico (Railway inyecta $PORT)
+# Puerto dinamico (Render inyecta PORT=10000, Railway inyecta variable)
 export PORT="${PORT:-80}"
-echo "Puerto HTTP: $PORT"
+echo "Puerto HTTP configurado: $PORT"
+
+# Configurar Apache para escuchar en 80, 10000, y $PORT para responder a cualquier proxy
+cat << 'EOF' > /etc/apache2/ports.conf
+Listen 80
+Listen 10000
+EOF
+
+if [ -n "$PORT" ] && [ "$PORT" != "80" ] && [ "$PORT" != "10000" ]; then
+    echo "Listen $PORT" >> /etc/apache2/ports.conf
+fi
 
 # 1. Asegurar directorios de base de datos, almacenamiento y cache
 mkdir -p "$APP_DIR/database" \
@@ -25,42 +35,18 @@ touch "$APP_DIR/database/database.sqlite"
 chown -R www-data:www-data "$APP_DIR/database" "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
 chmod -R 775 "$APP_DIR/database" "$APP_DIR/storage" "$APP_DIR/bootstrap/cache"
 
-# 2. Limpiar caches antiguas para que tome las variables de entorno actuales
+# 2. Limpiar caches antiguas
 php artisan config:clear >/dev/null 2>&1 || true
 php artisan route:clear >/dev/null 2>&1 || true
 
-# 3. Ejecutar migraciones con reintentos (la BD puede tardar unos segundos en aceptar conexiones)
-echo "Verificando y ejecutando migraciones de base de datos..."
-MIGRATED=0
-ATTEMPT=1
-MAX_ATTEMPTS="${DB_MIGRATE_ATTEMPTS:-10}"
-while [ "$ATTEMPT" -le "$MAX_ATTEMPTS" ]; do
-    if php artisan migrate --force; then
-        MIGRATED=1
-        echo "Migraciones ejecutadas exitosamente."
-        break
-    fi
-    echo "Intento $ATTEMPT/$MAX_ATTEMPTS fallido. Reintentando en 5 segundos..."
-    ATTEMPT=$((ATTEMPT + 1))
-    sleep 5
-done
+# 3. Migraciones rápidas (no bloquean indefinidamente el arranque de Apache)
+echo "Verificando base de datos y migraciones..."
+php artisan migrate --force --no-interaction || echo "Aviso: Migraciones no completadas inmediatamente, continuando arranque..."
 
-if [ "$MIGRATED" -eq 0 ]; then
-    echo "======================================================================"
-    echo "ADVERTENCIA: No se pudieron ejecutar las migraciones en el arranque."
-    echo "Revisa las variables DB_* / DB_URL del servicio."
-    echo "El servidor web continuara iniciando para mantener el servicio activo."
-    echo "======================================================================"
-else
-    # 4. Sembrar usuarios iniciales SOLO si la tabla users esta vacia
-    #    (asi no se reinician las contrasenas en cada despliegue).
-    USER_COUNT=$(php -r "require 'vendor/autoload.php'; (require_once 'bootstrap/app.php')->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo \App\Models\User::count();" 2>/dev/null | tr -dc '0-9')
-    if [ "${SEED_ON_BOOT:-false}" = "true" ] || [ "${USER_COUNT:-0}" = "0" ]; then
-        echo "Sembrando datos iniciales (usuarios)..."
-        php artisan db:seed --force || echo "ADVERTENCIA: la siembra fallo."
-    else
-        echo "Usuarios existentes: $USER_COUNT. Se omite la siembra."
-    fi
+# 4. Sembrado si está habilitado
+if [ "${SEED_ON_BOOT:-false}" = "true" ]; then
+    echo "Sembrando base de datos..."
+    php artisan db:seed --force --no-interaction || true
 fi
 
 # 5. Enlace de storage publico y cache de configuracion para produccion

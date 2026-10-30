@@ -52,8 +52,8 @@ RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstra
 # Copy Apache configuration
 COPY .docker/vhost.conf /etc/apache2/sites-available/000-default.conf
 
-# Configure Apache ports to listen on the dynamic $PORT environment variable
-RUN echo "Listen \${PORT}" > /etc/apache2/ports.conf
+# Configure Apache ports to listen on both 80 and 10000
+RUN printf "Listen 80\nListen 10000\n" > /etc/apache2/ports.conf
 
 # Default PORT environment variable (Railway/Render will override this)
 ENV PORT=80
@@ -62,8 +62,8 @@ ENV PORT=80
 RUN sed -i 's/\r$//' /var/www/html/.docker/entrypoint.sh \
     && chmod +x /var/www/html/.docker/entrypoint.sh
 
-# Expose port
-EXPOSE 80
+# Expose ports
+EXPOSE 80 10000
 
 # Start container via resilient entrypoint script
 CMD ["/bin/sh", "/var/www/html/.docker/entrypoint.sh"]

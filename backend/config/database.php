@@ -110,9 +110,15 @@ return [
             'prefix' => '',
             'prefix_indexes' => true,
             'search_path' => 'public',
-            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'sslmode' => (function () {
+                $host = (string) env('DB_HOST', '');
+                $url = (string) (env('DB_URL') ?: env('DATABASE_URL'));
+                if (str_contains($host, 'supabase') || str_contains($url, 'supabase')) {
+                    return env('DB_SSLMODE', 'require');
+                }
+                return env('DB_SSLMODE', 'prefer');
+            })(),
             'options' => [
-                \PDO::ATTR_TIMEOUT => (int) env('DB_TIMEOUT', 5),
                 \PDO::ATTR_EMULATE_PREPARES => true,
             ],
         ],

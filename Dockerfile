@@ -47,12 +47,12 @@ RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstra
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
 
 COPY backend/.docker/vhost.conf /etc/apache2/sites-available/000-default.conf
-RUN echo "Listen \${PORT}" > /etc/apache2/ports.conf
+RUN printf "Listen 80\nListen 10000\n" > /etc/apache2/ports.conf
 
 ENV PORT=80
 
 RUN sed -i 's/\r$//' /var/www/html/.docker/entrypoint.sh \
     && chmod +x /var/www/html/.docker/entrypoint.sh
 
-EXPOSE 80
+EXPOSE 80 10000
 CMD ["/bin/sh", "/var/www/html/.docker/entrypoint.sh"]
