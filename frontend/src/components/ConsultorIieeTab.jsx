@@ -123,9 +123,10 @@ export default function ConsultorIieeTab({ resultado, onCargarNuevo }) {
             <span style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }}>🔍</span>
             <input
               type="text"
-              placeholder="Escribe el nombre del colegio (ej. 070, SAN SEBASTIAN), Código Local (ej. 409942) o Código Modular..."
+              placeholder="Escribe el CÓDIGO IE (ej. 25592689), nombre del colegio (ej. 14008 LEONOR CERNA), Código Local o Modular..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
+
               style={{
                 width: '100%',
                 padding: '0.85rem 1rem 0.85rem 2.8rem',

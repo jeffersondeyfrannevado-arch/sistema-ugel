@@ -240,7 +240,7 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
           <div style={{ display: 'flex', gap: '0.8rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               type="text"
-              placeholder="🔍 Buscar por colegio o código..."
+              placeholder="🔍 Buscar por CÓDIGO IE (ej. 25592689), nombre o código modular..."
               value={busquedaColegio}
               onChange={(e) => setBusquedaColegio(e.target.value)}
               style={{ padding: '0.6rem 0.9rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '220px', fontSize: '0.9rem' }}
@@ -255,12 +255,13 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
                 <option value="">No hay colegios encontrados</option>
               ) : (
                 colegiosFiltrados.map((c, i) => (
-                  <option key={i} value={c.codigo_ie || c.nombre}>
-                    I.E. {c.nombre || c.codigo_ie} {c.codmod ? `(Cód. Mod. ${c.codmod})` : ''}
+                  <option key={i} value={c.codigo_ie || c.key || c.nombre}>
+                    {c.codigo_ie ? `[CÓDIGO IE: ${c.codigo_ie}] - ` : ''}{c.nombre || c.codigo_local} {c.niveles?.length ? `(${c.niveles.join(', ')})` : (c.codmod ? `(Mod. ${c.codmod})` : '')}
                   </option>
                 ))
               )}
             </select>
+
 
             <button
               onClick={handleDescargarColegio}

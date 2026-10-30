@@ -1,0 +1,17 @@
+.git
+.env
+.env.*
+!.env.example
+frontend/node_modules
+frontend/dist
+backend/vendor
+backend/node_modules
+backend/storage/logs/*
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/database/database.sqlite
+backend/database/*.sqlite-*
+*.xlsx
+*.xls
+.phpunit.result.cache

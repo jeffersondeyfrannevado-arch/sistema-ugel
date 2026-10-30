@@ -149,7 +149,7 @@ export default function MatriculaNivelesPanel({ resultado, onResultadoChange }) 
           <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
             <input
               type="text"
-              placeholder="🔍 Buscar código (ej. 070)..."
+              placeholder="🔍 Buscar por CÓDIGO IE (ej. 25592689), nombre o código local..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               style={{ padding: '0.65rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '1', minWidth: '220px' }}
@@ -161,11 +161,12 @@ export default function MatriculaNivelesPanel({ resultado, onResultadoChange }) 
               style={{ padding: '0.65rem 1rem', borderRadius: '6px', border: '1px solid #cbd5e1', flex: '2', minWidth: '260px', fontWeight: 'bold' }}
             >
               {colegiosFiltrados.map((c) => (
-                <option key={c.codigo_ie || c.nombre} value={c.codigo_ie || c.nombre}>
-                  I.E. {c.nombre || c.codigo_ie} {c.niveles?.length ? `(${c.niveles.join(', ')})` : ''}
+                <option key={c.codigo_ie || c.key || c.nombre} value={c.codigo_ie || c.key || c.nombre}>
+                  {c.codigo_ie ? `[CÓDIGO IE: ${c.codigo_ie}] - ` : ''}{c.nombre || c.codigo_local} {c.niveles?.length ? `(${c.niveles.join(', ')})` : ''}
                 </option>
               ))}
             </select>
+
 
             <button
               onClick={handleDescargar}

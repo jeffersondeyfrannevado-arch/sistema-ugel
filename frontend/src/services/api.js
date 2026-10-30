@@ -1,4 +1,9 @@
-const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://sistema-ugel-api.onrender.com/api' : 'http://127.0.0.1:8000/api')
+let rawBaseUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://sistema-ugel-api.onrender.com/api' : 'http://127.0.0.1:8000/api')
+rawBaseUrl = (rawBaseUrl || '').trim().replace(/\/+$/, '')
+if (!rawBaseUrl.endsWith('/api')) {
+  rawBaseUrl += '/api'
+}
+const BASE_URL = rawBaseUrl
 
 function getHeaders(isFormData = false) {
   const token = localStorage.getItem('auth_token')
@@ -398,6 +403,16 @@ export async function procesarFiltradoColegio(archivo) {
   })
 
   return parseJsonResponse(res, 'Error al procesar el archivo para filtrado de colegio')
+}
+
+export async function cargarEjemploFiltrado(tipo = 'NEXUS') {
+  const res = await fetch(`${BASE_URL}/matricula/filtrar-colegio/cargar-ejemplo`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ tipo }),
+  })
+
+  return parseJsonResponse(res, 'Error al cargar ejemplo de demostración')
 }
 
 export async function exportarFiltradoColegio(colegio, tipoExcel) {

@@ -120,7 +120,81 @@ class MatriculaController extends Controller
                 }
             }
         }
+
+        // Fallback a archivos maestros en la raíz del proyecto si no se ha subido uno temporal aún
+        if (!$latestFile) {
+            $fallbacks = [
+                base_path('../nexus.xlsx'),
+                base_path('nexus.xlsx'),
+                base_path('../REPORTE ACTUALIZADO.xls'),
+                base_path('REPORTE ACTUALIZADO.xls'),
+            ];
+            foreach ($fallbacks as $fb) {
+                if (file_exists($fb)) {
+                    return $fb;
+                }
+            }
+        }
+
         return $latestFile;
+    }
+
+    /**
+     * Permite cargar directamente el archivo nexus.xlsx o reporte de matrícula de demostración del sistema.
+     */
+    public function cargarEjemploFiltrado(Request $request)
+    {
+        $tipo = strtoupper($request->input('tipo', 'NEXUS'));
+        $targetSource = null;
+
+        if ($tipo === 'NEXUS') {
+            $candidates = [
+                base_path('../nexus.xlsx'),
+                base_path('nexus.xlsx'),
+                base_path('../NEXUS - 15255.xlsx'),
+                base_path('NEXUS - 15255.xlsx'),
+            ];
+            foreach ($candidates as $cand) {
+                if (file_exists($cand)) {
+                    $targetSource = $cand;
+                    break;
+                }
+            }
+        } else {
+            $candidates = [
+                base_path('../REPORTE ACTUALIZADO.xls'),
+                base_path('REPORTE ACTUALIZADO.xls'),
+            ];
+            foreach ($candidates as $cand) {
+                if (file_exists($cand)) {
+                    $targetSource = $cand;
+                    break;
+                }
+            }
+        }
+
+        if (!$targetSource || !file_exists($targetSource)) {
+            return response()->json([
+                'success' => false,
+                'mensaje' => 'No se encontró el archivo maestro de ejemplo en el servidor.',
+            ], 404);
+        }
+
+        try {
+            $tempPath = $this->saveUploadedTempFile($targetSource);
+            $resultado = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
+
+            return response()->json([
+                'success' => true,
+                'data' => $resultado,
+                'archivo_origen' => basename($targetSource),
+            ]);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'mensaje' => 'Error al cargar ejemplo: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**

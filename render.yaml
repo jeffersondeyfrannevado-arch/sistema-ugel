@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: sistema-ugel-api
+    runtime: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: backend
+    plan: free
+    region: oregon
+    healthCheckPath: /api/health-check
+    envVars:
+      - key: APP_NAME
+        value: "Sistema Matricula UGEL"
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_KEY
+        value: "base64:OayLpDWm7CVSoUSr9QIuf3rZj3Zyt+sEf7xY07UIuBE="
+      - key: DB_CONNECTION
+        value: sqlite
+      - key: DB_DATABASE
+        value: /var/www/html/database/database.sqlite
+      - key: SEED_ON_BOOT
+        value: "true"
+      - key: LOG_CHANNEL
+        value: stderr

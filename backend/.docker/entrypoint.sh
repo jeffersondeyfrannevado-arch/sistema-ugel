@@ -54,7 +54,7 @@ if [ "$MIGRATED" -eq 0 ]; then
 else
     # 4. Sembrar usuarios iniciales SOLO si la tabla users esta vacia
     #    (asi no se reinician las contrasenas en cada despliegue).
-    USER_COUNT=$(php artisan tinker --execute="echo \App\Models\User::count();" 2>/dev/null | tail -n 1 | tr -dc '0-9')
+    USER_COUNT=$(php -r "require 'vendor/autoload.php'; (require_once 'bootstrap/app.php')->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap(); echo \App\Models\User::count();" 2>/dev/null | tr -dc '0-9')
     if [ "${SEED_ON_BOOT:-false}" = "true" ] || [ "${USER_COUNT:-0}" = "0" ]; then
         echo "Sembrando datos iniciales (usuarios)..."
         php artisan db:seed --force || echo "ADVERTENCIA: la siembra fallo."

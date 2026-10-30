@@ -71,6 +71,9 @@ export default function Login({ onLogin }) {
         const data = await login(email, password)
         if (data.mfa_required) {
           setMfaChallenge(data)
+          if (data.debug_code) {
+            setMfaCode(data.debug_code)
+          }
         } else {
           persistSession(data)
         }
@@ -93,6 +96,9 @@ export default function Login({ onLogin }) {
     try {
       const data = await resendMfaCode(mfaChallenge.challenge_id)
       setMfaChallenge(data)
+      if (data.debug_code) {
+        setMfaCode(data.debug_code)
+      }
     } catch (err) {
       setError(err.message)
     } finally {
@@ -214,17 +220,39 @@ export default function Login({ onLogin }) {
               )}
 
               {isMfaStep && (
-                <div className="form-group">
-                  <label>Código de verificación</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={mfaCode}
-                    onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                    required
-                    placeholder="000000"
-                  />
-                </div>
+                <>
+                  {mfaChallenge?.debug_code && (
+                    <div style={{
+                      backgroundColor: '#eff6ff',
+                      border: '1px solid #bfdbfe',
+                      borderRadius: '8px',
+                      padding: '12px',
+                      marginBottom: '1rem',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.85rem', color: '#1e40af', fontWeight: '600' }}>
+                        Código de verificación generado:
+                      </div>
+                      <div style={{ fontSize: '1.6rem', fontWeight: 'bold', color: '#1d4ed8', letterSpacing: '4px', margin: '4px 0' }}>
+                        {mfaChallenge.debug_code}
+                      </div>
+                      <div style={{ fontSize: '0.78rem', color: '#3b82f6' }}>
+                        Se autocompletó en la casilla. Haz clic en <b>Validar código</b>.
+                      </div>
+                    </div>
+                  )}
+                  <div className="form-group">
+                    <label>Código de verificación</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={mfaCode}
+                      onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      required
+                      placeholder="000000"
+                    />
+                  </div>
+                </>
               )}
             </>
           )}

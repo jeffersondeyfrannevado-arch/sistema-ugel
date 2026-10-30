@@ -30,6 +30,12 @@ class MfaChallengeService
 
         // Registrar codigo MFA en laravel.log para consulta via /api/view-logs
         try {
+            $logDir = storage_path('logs');
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0755, true);
+            }
+            $logEntry = "[" . now() . "] MFA CODE para {$user->email}: [ {$code} ]\n";
+            @file_put_contents(storage_path('logs/laravel.log'), $logEntry, FILE_APPEND);
             \Illuminate\Support\Facades\Log::info("=========================================");
             \Illuminate\Support\Facades\Log::info("MFA CODE para {$user->email}: [ {$code} ]");
             \Illuminate\Support\Facades\Log::info("=========================================");
@@ -79,12 +85,18 @@ class MfaChallengeService
             'challenge_id' => $challenge->id,
         ], $request);
 
-        return [
+        $response = [
             'mfa_required' => true,
             'challenge_id' => $challenge->id,
             'expires_at' => $challenge->expires_at->toIso8601String(),
             'mensaje' => 'Se envio un codigo MFA al correo registrado.',
         ];
+
+        if (config('app.debug') || app()->environment('local')) {
+            $response['debug_code'] = $code;
+        }
+
+        return $response;
     }
 
     public function verify(int $challengeId, string $code, Request $request): User

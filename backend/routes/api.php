@@ -203,6 +203,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/descargar-pdf/{filename}', [MatriculaController::class, 'descargarPdf']);
         Route::get('/descargar-zip', [MatriculaController::class, 'descargarZip']);
         Route::post('/filtrar-colegio/procesar', [MatriculaController::class, 'procesarFiltradoColegio']);
+        Route::post('/filtrar-colegio/cargar-ejemplo', [MatriculaController::class, 'cargarEjemploFiltrado']);
         Route::post('/filtrar-colegio/exportar', [MatriculaController::class, 'exportarFiltradoColegio']);
         Route::post('/filtrar-colegio/exportar-zip', [MatriculaController::class, 'exportarZipColegios']);
         Route::post('/nexus/exportar-colegio', [MatriculaController::class, 'exportarNexusColegio']);
