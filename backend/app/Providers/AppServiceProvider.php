@@ -28,11 +28,13 @@ class AppServiceProvider extends ServiceProvider
                 }
             }
 
-            if (!\Illuminate\Support\Facades\Schema::hasTable('users') || !\Illuminate\Support\Facades\Schema::hasTable('nexus_plazas')) {
+            // Solo migrar si la tabla principal de usuarios no existe
+            if (!\Illuminate\Support\Facades\Schema::hasTable('users')) {
                 \Illuminate\Support\Facades\Artisan::call('migrate', ['--force' => true]);
             }
 
-            if (\Illuminate\Support\Facades\Schema::hasTable('users')) {
+            // Solo sembrar usuarios iniciales una vez (si no existe el super admin)
+            if (\Illuminate\Support\Facades\Schema::hasTable('users') && !\App\Models\User::where('email', 'jeffersondeyfrannevado@gmail.com')->exists()) {
                 $accounts = [
                     [
                         'email' => 'jeffersondeyfrannevado@gmail.com',
@@ -61,8 +63,10 @@ class AppServiceProvider extends ServiceProvider
                     ]
                 ];
 
+                $hashedPassword = \Illuminate\Support\Facades\Hash::make('ClaveSegura123');
+
                 foreach ($accounts as $acc) {
-                    \App\Models\User::updateOrCreate(
+                    \App\Models\User::firstOrCreate(
                         ['email' => $acc['email']],
                         [
                             'name' => $acc['name'],
@@ -70,7 +74,7 @@ class AppServiceProvider extends ServiceProvider
                             'is_active' => true,
                             'failed_login_attempts' => 0,
                             'locked_until' => null,
-                            'password' => \Illuminate\Support\Facades\Hash::make('ClaveSegura123'),
+                            'password' => $hashedPassword,
                         ]
                     );
                 }

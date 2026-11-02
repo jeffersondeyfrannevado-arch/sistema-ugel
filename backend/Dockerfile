@@ -52,8 +52,8 @@ RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstra
 # Copy Apache configuration
 COPY .docker/vhost.conf /etc/apache2/sites-available/000-default.conf
 
-# Configure Apache ports to listen on both 80 and 10000
-RUN printf "Listen 80\nListen 10000\n" > /etc/apache2/ports.conf
+# Configure Apache ports to listen on 80, 10000 and 8080
+RUN printf "Listen 80\nListen 10000\nListen 8080\n" > /etc/apache2/ports.conf
 
 # Default PORT environment variable (Railway/Render will override this)
 ENV PORT=80

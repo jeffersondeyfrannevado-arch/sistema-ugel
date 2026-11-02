@@ -13,13 +13,14 @@ rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker
 export PORT="${PORT:-80}"
 echo "Puerto HTTP configurado: $PORT"
 
-# Configurar Apache para escuchar en 80, 10000, y $PORT para responder a cualquier proxy
+# Configurar Apache para escuchar en 80, 10000, 8080 y $PORT para responder a cualquier proxy
 cat << 'EOF' > /etc/apache2/ports.conf
 Listen 80
 Listen 10000
+Listen 8080
 EOF
 
-if [ -n "$PORT" ] && [ "$PORT" != "80" ] && [ "$PORT" != "10000" ]; then
+if [ -n "$PORT" ] && [ "$PORT" != "80" ] && [ "$PORT" != "10000" ] && [ "$PORT" != "8080" ]; then
     echo "Listen $PORT" >> /etc/apache2/ports.conf
 fi
 

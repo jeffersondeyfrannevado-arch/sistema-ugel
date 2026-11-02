@@ -47,7 +47,7 @@ RUN mkdir -p /var/www/html/database /var/www/html/storage /var/www/html/bootstra
     && chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache /var/www/html/database
 
 COPY backend/.docker/vhost.conf /etc/apache2/sites-available/000-default.conf
-RUN printf "Listen 80\nListen 10000\n" > /etc/apache2/ports.conf
+RUN printf "Listen 80\nListen 10000\nListen 8080\n" > /etc/apache2/ports.conf
 
 ENV PORT=80
 
