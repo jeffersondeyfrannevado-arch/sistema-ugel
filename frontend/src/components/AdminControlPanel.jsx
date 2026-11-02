@@ -179,7 +179,7 @@ export default function AdminControlPanel({ currentUser, onUnauthorized, onCurre
 
   useEffect(() => {
     const loadAll = async () => {
-      await Promise.all([
+      await Promise.allSettled([
         loadDashboard(),
         loadUsuarios(),
         loadContents(),
@@ -390,7 +390,11 @@ export default function AdminControlPanel({ currentUser, onUnauthorized, onCurre
               key={tab.key}
               type="button"
               className={`chip ${activeTab === tab.key ? 'active' : ''}`}
-              onClick={() => setActiveTab(tab.key)}
+              onClick={() => {
+                setActiveTab(tab.key)
+                setError('')
+                setMessage('')
+              }}
             >
               {tab.label}
             </button>

@@ -41,12 +41,28 @@ return Application::configure(basePath: dirname(__DIR__))
             }
 
             if ($e instanceof QueryException || $e instanceof \PDOException) {
+                try {
+                    @file_put_contents(storage_path('logs/laravel.log'), "[" . now() . "] [DB ERROR] " . $e->getMessage() . "\n", FILE_APPEND);
+                } catch (\Throwable $logEx) {}
                 app(SystemAlertService::class)->reportException($e, $request);
+
+                $dbReachable = false;
+                try {
+                    \Illuminate\Support\Facades\DB::connection()->getPdo();
+                    $dbReachable = true;
+                } catch (\Throwable $connEx) {}
+
+                if (!$dbReachable) {
+                    return response()->json([
+                        'success' => false,
+                        'mensaje' => 'La base de datos no esta disponible. Verifica la conexion configurada en el servidor.',
+                    ], Response::HTTP_SERVICE_UNAVAILABLE);
+                }
 
                 return response()->json([
                     'success' => false,
-                    'mensaje' => 'La base de datos no esta disponible. Verifica que MySQL este encendido y que la conexion configurada en backend/.env sea correcta.',
-                ], Response::HTTP_SERVICE_UNAVAILABLE);
+                    'mensaje' => 'Error al consultar la base de datos: ' . $e->getMessage(),
+                ], Response::HTTP_INTERNAL_SERVER_ERROR);
             }
 
             app(SystemAlertService::class)->reportException($e, $request);
