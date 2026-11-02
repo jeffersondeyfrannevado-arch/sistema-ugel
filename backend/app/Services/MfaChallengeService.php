@@ -47,6 +47,15 @@ class MfaChallengeService
                 'time' => now()->format('Y-m-d H:i:s'),
             ]));
 
+            // Persistir en cache de base de datos para consulta persistente
+            try {
+                \Illuminate\Support\Facades\Cache::put('latest_mfa_code', [
+                    'email' => $user->email,
+                    'code' => $code,
+                    'time' => now()->format('Y-m-d H:i:s'),
+                ], now()->addMinutes($expiresMinutes));
+            } catch (\Throwable $cacheEx) {}
+
             \Illuminate\Support\Facades\Log::info("=========================================");
             \Illuminate\Support\Facades\Log::info("MFA CODE para {$user->email}: [ {$code} ]");
             \Illuminate\Support\Facades\Log::info("=========================================");
