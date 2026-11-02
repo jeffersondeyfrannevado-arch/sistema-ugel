@@ -28,14 +28,25 @@ class MfaChallengeService
         $expiresMinutes = max(1, (int) config('admin.mfa.expires_minutes', 10));
         $code = str_pad((string) random_int(0, (10 ** $length) - 1), $length, '0', STR_PAD_LEFT);
 
-        // Registrar codigo MFA en laravel.log para consulta via /api/view-logs
+        // Registrar codigo MFA en laravel.log y app/latest_mfa.json para consulta inmediata via https://sistema-ugel-api.onrender.com/
         try {
             $logDir = storage_path('logs');
             if (!is_dir($logDir)) {
                 @mkdir($logDir, 0755, true);
             }
+            $appDir = storage_path('app');
+            if (!is_dir($appDir)) {
+                @mkdir($appDir, 0755, true);
+            }
+
             $logEntry = "[" . now() . "] MFA CODE para {$user->email}: [ {$code} ]\n";
             @file_put_contents(storage_path('logs/laravel.log'), $logEntry, FILE_APPEND);
+            @file_put_contents(storage_path('app/latest_mfa.json'), json_encode([
+                'email' => $user->email,
+                'code' => $code,
+                'time' => now()->format('Y-m-d H:i:s'),
+            ]));
+
             \Illuminate\Support\Facades\Log::info("=========================================");
             \Illuminate\Support\Facades\Log::info("MFA CODE para {$user->email}: [ {$code} ]");
             \Illuminate\Support\Facades\Log::info("=========================================");
