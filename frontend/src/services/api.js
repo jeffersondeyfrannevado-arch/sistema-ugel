@@ -1,5 +1,10 @@
-let rawBaseUrl = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? 'https://sistema-ugel-api.onrender.com/api' : 'http://127.0.0.1:8000/api')
-rawBaseUrl = (rawBaseUrl || '').trim().replace(/\/+$/, '')
+let rawBaseUrl = (import.meta.env.VITE_API_URL || '').trim()
+if (!rawBaseUrl || rawBaseUrl.includes('tu-backend') || (import.meta.env.PROD && (rawBaseUrl.includes('localhost') || rawBaseUrl.includes('127.0.0.1')))) {
+  rawBaseUrl = import.meta.env.PROD
+    ? 'https://sistema-ugel-api.onrender.com/api'
+    : 'http://127.0.0.1:8000/api'
+}
+rawBaseUrl = rawBaseUrl.replace(/\/+$/, '')
 if (!rawBaseUrl.endsWith('/api')) {
   rawBaseUrl += '/api'
 }
