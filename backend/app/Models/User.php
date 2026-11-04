@@ -55,6 +55,22 @@ class User extends Authenticatable
         ];
     }
 
+    public function setIsActiveAttribute($value): void
+    {
+        $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        $this->attributes['is_active'] = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql'
+            ? \Illuminate\Support\Facades\DB::raw($bool ? 'true' : 'false')
+            : $bool;
+    }
+
+    public function setMfaEnabledAttribute($value): void
+    {
+        $bool = filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        $this->attributes['mfa_enabled'] = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql'
+            ? \Illuminate\Support\Facades\DB::raw($bool ? 'true' : 'false')
+            : $bool;
+    }
+
     public function isAdmin(): bool
     {
         return AdminPermissions::isAdminRole($this->role);
