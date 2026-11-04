@@ -19,11 +19,14 @@ class AdminDashboardService
 
         $auditBase = AuditLog::query()->whereBetween('created_at', [$start, $end]);
 
+        $isPgsql = DB::connection()->getDriverName() === 'pgsql';
+        $trueVal = $isPgsql ? DB::raw('true') : true;
+
         try {
             $usuariosTotales = User::count();
-            $usuariosActivos = User::where('is_active', true)->count();
+            $usuariosActivos = User::where('is_active', $trueVal)->count();
             $usuariosBloqueados = User::whereNotNull('locked_until')->where('locked_until', '>', now())->count();
-            $mfaHabilitado = User::where('mfa_enabled', true)->count();
+            $mfaHabilitado = User::where('mfa_enabled', $trueVal)->count();
             $administradores = User::whereIn('role', ['super_admin', 'sub_admin', 'custom'])->count();
         } catch (\Throwable $e) {
             Log::warning('Dashboard metric users error: ' . $e->getMessage());
@@ -32,7 +35,7 @@ class AdminDashboardService
 
         try {
             $contenidosPublicados = SystemContent::where('status', 'published')->count();
-            $contenidosMarcados = SystemContent::where('is_flagged', true)->count();
+            $contenidosMarcados = SystemContent::where('is_flagged', $trueVal)->count();
         } catch (\Throwable $e) {
             Log::warning('Dashboard metric contents error: ' . $e->getMessage());
             $contenidosPublicados = 0; $contenidosMarcados = 0;
@@ -76,7 +79,7 @@ class AdminDashboardService
 
         try {
             $contenidoMarcado = SystemContent::query()
-                ->where('is_flagged', true)
+                ->where('is_flagged', $trueVal)
                 ->latest()
                 ->limit(5)
                 ->get();

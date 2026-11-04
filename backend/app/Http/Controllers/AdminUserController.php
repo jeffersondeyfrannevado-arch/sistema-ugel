@@ -36,18 +36,22 @@ class AdminUserController extends Controller
             $query->where('role', AdminPermissions::normalizeRole($role));
         }
 
+        $isPgsql = \Illuminate\Support\Facades\DB::connection()->getDriverName() === 'pgsql';
+        $trueVal = $isPgsql ? \Illuminate\Support\Facades\DB::raw('true') : true;
+        $falseVal = $isPgsql ? \Illuminate\Support\Facades\DB::raw('false') : false;
+
         if ($status === 'active') {
-            $query->where('is_active', true);
+            $query->where('is_active', $trueVal);
         } elseif ($status === 'inactive') {
-            $query->where('is_active', false);
+            $query->where('is_active', $falseVal);
         } elseif ($status === 'locked') {
             $query->whereNotNull('locked_until')->where('locked_until', '>', now());
         }
 
         if ($mfa === 'enabled') {
-            $query->where('mfa_enabled', true);
+            $query->where('mfa_enabled', $trueVal);
         } elseif ($mfa === 'disabled') {
-            $query->where('mfa_enabled', false);
+            $query->where('mfa_enabled', $falseVal);
         }
 
         return response()->json([
