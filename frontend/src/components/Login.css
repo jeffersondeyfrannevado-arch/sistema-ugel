@@ -99,13 +99,18 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 2rem;
+  height: 78px;
+  overflow: hidden;
+  margin-bottom: 1.15rem;
 }
 
 .logo-siagie-img {
-  height: 22px;
-  object-fit: contain;
-  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.02));
+  width: 245px;
+  max-width: 90%;
+  height: auto;
+  object-fit: cover;
+  object-position: center;
+  mix-blend-mode: multiply;
 }
 
 .login-header {
