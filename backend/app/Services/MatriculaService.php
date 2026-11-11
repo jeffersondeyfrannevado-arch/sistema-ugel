@@ -116,20 +116,30 @@ class MatriculaService
     {
         @set_time_limit(300);
         @ini_set('max_execution_time', '300');
-        @ini_set('memory_limit', '512M');
+        @ini_set('memory_limit', '384M');
 
         $this->limpiarDirectorio($this->outputBase);
 
-        $spreadsheet = IOFactory::load($archivo->getRealPath());
+        $reader = IOFactory::createReaderForFile($archivo->getRealPath());
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $spreadsheet = $reader->load($archivo->getRealPath());
         $sheet = $spreadsheet->getActiveSheet();
-        $rawRows = $sheet->toArray(null, true, true, false);
+        $sheetTitle = $sheet->getTitle();
+        $rawRows = $sheet->toArray(null, false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
-        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheet->getTitle());
+        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheetTitle);
 
         $registros = [];
         $errores = [];
+        $totalRaw = count($rawRows);
 
-        for ($i = $dataStartRow; $i < count($rawRows); $i++) {
+        for ($i = $dataStartRow; $i < $totalRaw; $i++) {
             $row = $rawRows[$i];
 
             if ($this->filaVacia($row)) {
@@ -144,6 +154,8 @@ class MatriculaService
                 $errores[] = $resultado['error'];
             }
         }
+        unset($rawRows);
+        gc_collect_cycles();
 
         $registros = array_values(array_filter($registros, function (array $registro) {
             return ($registro['MATRICULA_EN_PROCESO'] ?? 0) > 0;
@@ -200,11 +212,20 @@ class MatriculaService
 
     public function previewArchivo(UploadedFile $archivo): array
     {
-        $spreadsheet = IOFactory::load($archivo->getRealPath());
+        $reader = IOFactory::createReaderForFile($archivo->getRealPath());
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $spreadsheet = $reader->load($archivo->getRealPath());
         $sheet = $spreadsheet->getActiveSheet();
-        $rawRows = $sheet->toArray('', true, true, false);
+        $sheetTitle = $sheet->getTitle();
+        $rawRows = $sheet->toArray('', false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
-        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheet->getTitle());
+        [$dataStartRow, $headerRowIndex, $subHeaderRowIndex, $formato, $columnasDetectadas, $perfil] = $this->resolverContextoExcel($rawRows, $sheetTitle);
 
         $headers = $this->buildPreviewHeaders(
             $rawRows[$headerRowIndex] ?? [],
@@ -223,13 +244,16 @@ class MatriculaService
             );
         }
 
+        $totalFilasExcel = count($rawRows);
+        unset($rawRows);
+
         return [
-            'sheet' => $sheet->getTitle(),
+            'sheet' => $sheetTitle,
             'nivel' => $formato['titulo'],
             'perfil_formato' => $perfil['nombre'] ?? null,
             'columnas_detectadas' => $columnasDetectadas,
             'fila_inicio_datos' => $dataStartRow + 1,
-            'total_filas_excel' => count($rawRows),
+            'total_filas_excel' => $totalFilasExcel,
             'headers' => $headers,
             'rows' => $rows,
         ];
@@ -237,9 +261,14 @@ class MatriculaService
 
     public function generarPdfDesdeExcel(string $fullPath): array
     {
-        $spreadsheet = IOFactory::load($fullPath);
+        $reader = IOFactory::createReaderForFile($fullPath);
+        $reader->setReadDataOnly(true);
+        $spreadsheet = $reader->load($fullPath);
         $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray('', true, true, false);
+        $rows = $sheet->toArray('', false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
         $title = (string) ($rows[0][0] ?? 'REPORTE DE MATRÍCULA');
         $totalRow = $rows[count($rows) - 1] ?? [];
@@ -560,6 +589,10 @@ class MatriculaService
         $writer->setPreCalculateFormulas(false);
         $writer->save($rutaCompleta);
 
+        $spreadsheet->disconnectWorksheets();
+        unset($writer, $sheet, $spreadsheet);
+        gc_collect_cycles();
+
         return $nombreArchivo;
     }
 
@@ -770,9 +803,17 @@ class MatriculaService
     public function procesarColegiosMatricula($archivo): array
     {
         $filePath = is_string($archivo) ? $archivo : $archivo->getRealPath();
-        $spreadsheet = IOFactory::load($filePath);
+        $reader = IOFactory::createReaderForFile($filePath);
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $spreadsheet = $reader->load($filePath);
         $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray(null, true, true, false);
+        $rows = $sheet->toArray(null, false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
         // Buscar fila con CÓDIGO IE o CÓDIGO MODULAR
         $headerRowIdx = -1;
@@ -850,9 +891,17 @@ class MatriculaService
     public function exportarColegioMatricula($fileSource, string $codigoColegio): array
     {
         $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
-        $sourceSpreadsheet = IOFactory::load($filePath);
+        $reader = IOFactory::createReaderForFile($filePath);
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $sourceSpreadsheet = $reader->load($filePath);
         $sourceSheet = $sourceSpreadsheet->getActiveSheet();
-        $rows = $sourceSheet->toArray(null, true, true, false);
+        $rows = $sourceSheet->toArray(null, false, false, false);
+        $sourceSpreadsheet->disconnectWorksheets();
+        unset($sourceSheet, $sourceSpreadsheet, $reader);
+        gc_collect_cycles();
 
         // Buscar fila de cabecera principal
         $headerRowIdx = -1;
@@ -962,7 +1011,12 @@ class MatriculaService
         $fullPath = "{$outputDir}/{$filename}";
 
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($outSpreadsheet);
+        $writer->setPreCalculateFormulas(false);
         $writer->save($fullPath);
+
+        $outSpreadsheet->disconnectWorksheets();
+        unset($writer, $outSheet, $outSpreadsheet, $rows);
+        gc_collect_cycles();
 
         return [
             'success' => true,

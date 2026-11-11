@@ -5,9 +5,25 @@ echo "=== INICIANDO SISTEMA UGEL API ==="
 APP_DIR=/var/www/html
 cd "$APP_DIR" || exit 1
 
-# 0. Railway/Render: garantizar un solo MPM de Apache (evita "More than one MPM loaded")
+# 0. Railway/Render: garantizar un solo MPM de Apache y limitar workers para no exceder 512MB RAM
 rm -f /etc/apache2/mods-enabled/mpm_event.* /etc/apache2/mods-enabled/mpm_worker.* 2>/dev/null
+cat << 'EOF' > /etc/apache2/mods-available/mpm_prefork.conf
+<IfModule mpm_prefork_module>
+    StartServers             1
+    MinSpareServers          1
+    MaxSpareServers          2
+    MaxRequestWorkers        4
+    MaxConnectionsPerChild   15
+</IfModule>
+EOF
 [ -f /etc/apache2/mods-enabled/mpm_prefork.load ] || a2enmod mpm_prefork >/dev/null 2>&1
+
+# Limpiar archivos temporales huérfanos de exportaciones previas
+rm -rf "$APP_DIR/storage/app/matricula_colegios" \
+       "$APP_DIR/storage/app/nexus_colegios" \
+       "$APP_DIR/storage/app/matricula_output" \
+       "$APP_DIR/storage/app/zip_temp_"* \
+       "$APP_DIR/storage/app/PAQUETE_"*.zip 2>/dev/null || true
 
 # Puerto dinamico (Render inyecta PORT=10000, Railway inyecta variable)
 export PORT="${PORT:-80}"

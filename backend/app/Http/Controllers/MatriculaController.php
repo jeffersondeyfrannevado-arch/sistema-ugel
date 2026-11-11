@@ -54,9 +54,12 @@ class MatriculaController extends Controller
 
             // 2. Procesar algoritmo principal de matrícula
             $resultado = $this->service->procesarArchivo($archivo, $columnasResaltadas);
+            gc_collect_cycles();
 
             // 3. Extraer colegios desde la copia guardada
             $colegiosData = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
+            $this->saveTypedTempCopy($tempPath, $colegiosData['tipo_excel'] ?? 'MATRICULA');
+            gc_collect_cycles();
 
             return response()->json([
                 'success' => true,
@@ -102,41 +105,111 @@ class MatriculaController extends Controller
         return $targetPath;
     }
 
-    private function getUploadedTempFile(): ?string
+    private function saveTypedTempCopy(string $sourcePath, string $tipoExcel): void
     {
-        $dirs = [storage_path('app'), sys_get_temp_dir()];
-        $latestFile = null;
-        $latestMtime = 0;
+        if (!file_exists($sourcePath)) {
+            return;
+        }
+        $ext = strtolower(pathinfo($sourcePath, PATHINFO_EXTENSION)) ?: 'xlsx';
+        $dir = storage_path('app');
+        if (!@is_dir($dir) || !@is_writable($dir)) {
+            @mkdir($dir, 0755, true);
+        }
+        $targetDir = (@is_dir($dir) && @is_writable($dir)) ? $dir : sys_get_temp_dir();
+        $prefix = strtoupper($tipoExcel) === 'NEXUS' ? 'temp_filtrado_nexus' : 'temp_filtrado_matricula';
 
-        foreach ($dirs as $dir) {
-            foreach (['xls', 'xlsx'] as $ext) {
-                $file = "{$dir}/temp_filtrado_colegio_uploaded.{$ext}";
-                if (file_exists($file)) {
-                    $mtime = filemtime($file);
-                    if ($mtime >= $latestMtime) {
-                        $latestMtime = $mtime;
-                        $latestFile = $file;
-                    }
-                }
+        // Eliminar copias previas con otra extensión para que siempre gane la más reciente de este tipo
+        foreach (['xls', 'xlsx'] as $oldExt) {
+            $oldFile = "{$targetDir}/{$prefix}.{$oldExt}";
+            if ($oldFile !== "{$targetDir}/{$prefix}.{$ext}" && file_exists($oldFile)) {
+                @unlink($oldFile);
             }
         }
 
-        // Fallback a archivos maestros en la raíz del proyecto si no se ha subido uno temporal aún
-        if (!$latestFile) {
+        $typedTarget = "{$targetDir}/{$prefix}.{$ext}";
+        if ($sourcePath !== $typedTarget) {
+            @copy($sourcePath, $typedTarget);
+            @touch($typedTarget);
+        }
+    }
+
+    private function getUploadedTempFile(?string $tipoExcel = null): ?string
+    {
+        $dirs = [storage_path('app'), sys_get_temp_dir()];
+        $tipoNorm = $tipoExcel ? strtoupper(trim($tipoExcel)) : null;
+
+        // 1. Si se especifica NEXUS o MATRICULA, buscar primero la copia temporal de ese tipo exacto
+        if ($tipoNorm === 'NEXUS' || $tipoNorm === 'MATRICULA') {
+            $prefix = $tipoNorm === 'NEXUS' ? 'temp_filtrado_nexus' : 'temp_filtrado_matricula';
+            $latestTyped = null;
+            $latestTypedMtime = 0;
+            foreach ($dirs as $dir) {
+                foreach (['xls', 'xlsx'] as $ext) {
+                    $file = "{$dir}/{$prefix}.{$ext}";
+                    if (file_exists($file)) {
+                        $mtime = filemtime($file);
+                        if ($mtime >= $latestTypedMtime) {
+                            $latestTypedMtime = $mtime;
+                            $latestTyped = $file;
+                        }
+                    }
+                }
+            }
+            if ($latestTyped) {
+                return $latestTyped;
+            }
+        }
+
+        // 2. Buscar archivo temporal general si no se pidió tipo específico
+        if (!$tipoNorm) {
+            $latestFile = null;
+            $latestMtime = 0;
+            foreach ($dirs as $dir) {
+                foreach (['xls', 'xlsx'] as $ext) {
+                    $file = "{$dir}/temp_filtrado_colegio_uploaded.{$ext}";
+                    if (file_exists($file)) {
+                        $mtime = filemtime($file);
+                        if ($mtime >= $latestMtime) {
+                            $latestMtime = $mtime;
+                            $latestFile = $file;
+                        }
+                    }
+                }
+            }
+            if ($latestFile) {
+                return $latestFile;
+            }
+        }
+
+        // 3. Fallback directo a los archivos maestros oficiales del servidor según el tipo solicitado
+        if ($tipoNorm === 'NEXUS') {
+            $fallbacks = [
+                base_path('../nexus.xlsx'),
+                base_path('nexus.xlsx'),
+                base_path('../NEXUS - 15255.xlsx'),
+                base_path('NEXUS - 15255.xlsx'),
+            ];
+        } elseif ($tipoNorm === 'MATRICULA') {
+            $fallbacks = [
+                base_path('../REPORTE ACTUALIZADO.xls'),
+                base_path('REPORTE ACTUALIZADO.xls'),
+            ];
+        } else {
             $fallbacks = [
                 base_path('../nexus.xlsx'),
                 base_path('nexus.xlsx'),
                 base_path('../REPORTE ACTUALIZADO.xls'),
                 base_path('REPORTE ACTUALIZADO.xls'),
             ];
-            foreach ($fallbacks as $fb) {
-                if (file_exists($fb)) {
-                    return $fb;
-                }
+        }
+
+        foreach ($fallbacks as $fb) {
+            if (file_exists($fb)) {
+                return $fb;
             }
         }
 
-        return $latestFile;
+        return null;
     }
 
     /**
@@ -182,6 +255,7 @@ class MatriculaController extends Controller
 
         try {
             $tempPath = $this->saveUploadedTempFile($targetSource);
+            $this->saveTypedTempCopy($tempPath, $tipo);
             $resultado = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
 
             return response()->json([
@@ -214,6 +288,7 @@ class MatriculaController extends Controller
 
             // 2. Procesar filtrado usando la ruta de archivo ya guardada
             $resultado = $this->filtradoColegioService->procesarArchivoColegios($tempPath);
+            $this->saveTypedTempCopy($tempPath, $resultado['tipo_excel'] ?? 'MATRICULA');
 
             return response()->json([
                 'success' => true,
@@ -239,7 +314,7 @@ class MatriculaController extends Controller
 
         $colegio = $request->input('colegio');
         $tipoExcel = $request->input('tipo_excel');
-        $uploadedPath = $this->getUploadedTempFile();
+        $uploadedPath = $this->getUploadedTempFile($tipoExcel);
 
         if (!$uploadedPath || !file_exists($uploadedPath)) {
             return response()->json(['error' => 'No hay un archivo cargado recientemente en la pestaña de filtrado.'], 404);
@@ -247,16 +322,30 @@ class MatriculaController extends Controller
 
         try {
             @set_time_limit(180);
+            @ini_set('memory_limit', '384M');
+            gc_collect_cycles();
             if ($tipoExcel === 'NEXUS') {
                 $res = $this->filtradoColegioService->exportarNexusColegio($uploadedPath, $colegio);
             } else {
                 $res = $this->filtradoColegioService->exportarMatriculaColegio($uploadedPath, $colegio);
             }
 
-            return response()->download($res['path'], $res['filename']);
+            return response()->download($res['path'], $res['filename'])->deleteFileAfterSend(true);
         } catch (\Throwable $e) {
             return response()->json(['error' => 'Error al exportar archivo por colegio: ' . $e->getMessage()], 500);
         }
+    }
+
+    public function exportarNexusColegio(Request $request)
+    {
+        $request->merge(['tipo_excel' => 'NEXUS']);
+        return $this->exportarFiltradoColegio($request);
+    }
+
+    public function exportarMatriculaColegio(Request $request)
+    {
+        $request->merge(['tipo_excel' => 'MATRICULA']);
+        return $this->exportarFiltradoColegio($request);
     }
 
     /**
@@ -264,9 +353,12 @@ class MatriculaController extends Controller
      */
     public function exportarZipColegios(Request $request)
     {
-        @set_time_limit(0);
-        @ini_set('memory_limit', '1024M');
-        $uploadedPath = $this->getUploadedTempFile();
+        @set_time_limit(300);
+        @ini_set('max_execution_time', '300');
+        @ini_set('memory_limit', '384M');
+        gc_collect_cycles();
+        $tipoExcel = $request->input('tipo_excel');
+        $uploadedPath = $this->getUploadedTempFile($tipoExcel);
 
         if (!$uploadedPath || !file_exists($uploadedPath)) {
             return response()->json(['error' => 'No hay un archivo cargado recientemente para exportar el paquete ZIP.'], 404);
@@ -330,6 +422,9 @@ class MatriculaController extends Controller
             if (!$file->isDir()) {
                 $relativePath = substr($file->getRealPath(), strlen($outputDir) + 1);
                 $zip->addFile($file->getRealPath(), $relativePath);
+                if (str_ends_with(strtolower($relativePath), '.xlsx')) {
+                    $zip->setCompressionName($relativePath, ZipArchive::CM_STORE);
+                }
             }
         }
 

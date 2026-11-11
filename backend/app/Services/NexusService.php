@@ -20,9 +20,17 @@ class NexusService
     public function procesarNexus($file): array
     {
         $filePath = is_string($file) ? $file : $file->getRealPath();
-        $spreadsheet = IOFactory::load($filePath);
+        $reader = IOFactory::createReaderForFile($filePath);
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $spreadsheet = $reader->load($filePath);
         $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray(null, true, true, false);
+        $rows = $sheet->toArray(null, false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
         // Buscar fila de cabecera (debe contener 'NOMBRE DE LA REGION' o 'NOMBRE DE LA INSTITUCION EDUCATIVA')
         $headerRowIdx = -1;
@@ -119,9 +127,17 @@ class NexusService
     public function exportarColegioNexus($fileSource, string $nombreColegio): array
     {
         $filePath = is_string($fileSource) ? $fileSource : $fileSource->getRealPath();
-        $sourceSpreadsheet = IOFactory::load($filePath);
+        $reader = IOFactory::createReaderForFile($filePath);
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $sourceSpreadsheet = $reader->load($filePath);
         $sourceSheet = $sourceSpreadsheet->getActiveSheet();
-        $rows = $sourceSheet->toArray(null, true, true, false);
+        $rows = $sourceSheet->toArray(null, false, false, false);
+        $sourceSpreadsheet->disconnectWorksheets();
+        unset($sourceSheet, $sourceSpreadsheet, $reader);
+        gc_collect_cycles();
 
         // Buscar fila de cabecera
         $headerRowIdx = -1;
@@ -280,7 +296,12 @@ class NexusService
         $fullPath = "{$outputDir}/{$filename}";
 
         $writer = new \PhpOffice\PhpSpreadsheet\Writer\Xlsx($outSpreadsheet);
+        $writer->setPreCalculateFormulas(false);
         $writer->save($fullPath);
+
+        $outSpreadsheet->disconnectWorksheets();
+        unset($writer, $outSheet, $outSpreadsheet, $rows);
+        gc_collect_cycles();
 
         return [
             'success' => true,

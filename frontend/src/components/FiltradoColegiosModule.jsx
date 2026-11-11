@@ -180,7 +180,7 @@ export default function FiltradoColegiosModule() {
     setExitoMsg(null)
 
     try {
-      const targetNombre = colegioActualObj?.nombre || colegioActualObj?.key || colegioSeleccionado
+      const targetNombre = resultado.tipo_excel === 'NEXUS' ? (colegioActualObj?.key || colegioActualObj?.nombre || colegioSeleccionado) : (colegioActualObj?.codigo_ie || colegioActualObj?.key || colegioActualObj?.nombre || colegioSeleccionado)
       await exportarFiltradoColegio(targetNombre, resultado.tipo_excel)
       setExitoMsg(`¡Archivo Excel para "${targetNombre}" generado con el formato oficial idéntico a las capturas y descargado con éxito!`)
     } catch (err) {
@@ -190,16 +190,19 @@ export default function FiltradoColegiosModule() {
     }
   }
 
-  const handleDescargarZip = async () => {
-    if (!resultado) return
+  const handleDescargarZip = async (tipoOverride) => {
+    const tipoObjetivo = typeof tipoOverride === 'string'
+      ? tipoOverride
+      : (resultado?.tipo_excel || (tabActiva === 'nexus' ? 'NEXUS' : 'MATRICULA'))
 
     setDescargandoZip(true)
     setErrorMsg(null)
     setExitoMsg(null)
 
     try {
-      await exportarZipColegios(resultado.tipo_excel)
-      setExitoMsg(`¡Paquete ZIP con los ${resultado.total_colegios} colegios exportado y descargado con éxito!`)
+      await exportarZipColegios(tipoObjetivo)
+      const totalInfo = resultado?.total_colegios ? `los ${resultado.total_colegios} colegios` : `todos los colegios (${tipoObjetivo})`
+      setExitoMsg(`¡Paquete completo ZIP con ${totalInfo} exportado y descargado con éxito!`)
     } catch (err) {
       setErrorMsg(err.message || 'Error al generar el paquete ZIP de colegios')
     } finally {
@@ -395,6 +398,55 @@ export default function FiltradoColegiosModule() {
         </button>
       </div>
 
+      {/* Barra Superior de Descarga de Paquete Completo ZIP (igual que en la pestaña Descargas) */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '14px',
+        backgroundColor: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderRadius: '14px',
+        padding: '16px 22px',
+        marginBottom: '20px',
+        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.04)'
+      }}>
+        <button
+          type="button"
+          onClick={() => handleDescargarZip(esNexus ? 'NEXUS' : 'MATRICULA')}
+          disabled={descargandoZip || cargando}
+          style={{
+            backgroundColor: descargandoZip ? '#94a3b8' : '#4f46e5',
+            color: '#ffffff',
+            padding: '12px 24px',
+            borderRadius: '10px',
+            border: 'none',
+            fontWeight: '800',
+            fontSize: '0.95rem',
+            cursor: (descargandoZip || cargando) ? 'not-allowed' : 'pointer',
+            boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '10px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <span>📦</span>
+          {descargandoZip
+            ? 'Generando paquete completo ZIP...'
+            : `Descargar paquete completo ZIP (${esNexus ? 'Colegios NEXUS' : 'Colegios Matrícula'})`}
+        </button>
+
+        <span style={{ fontSize: '0.9rem', color: '#64748b', fontWeight: '500' }}>
+          {resultado?.total_colegios
+            ? `${resultado.total_colegios} archivos Excel independientes agrupados por Institución Educativa (${resultado.tipo_excel})`
+            : (esNexus
+              ? 'Descarga todos los colegios de NEXUS en archivos Excel individuales dentro de un único ZIP'
+              : 'Descarga los 446 colegios de REPORTE MATRÍCULA agrupados por CÓDIGO IE en un único ZIP')}
+        </span>
+      </div>
+
       {/* Zona de Carga de Archivo o Carga Rápida de Demostración */}
       {!resultado && (
         <div style={{
@@ -489,6 +541,33 @@ export default function FiltradoColegiosModule() {
                   }}
                 >
                   <span>⚡</span> Cargar {esNexus ? 'nexus.xlsx del sistema (Demo Oficial)' : 'REPORTE ACTUALIZADO del sistema'}
+                </button>
+
+                {/* Botón 3: Descargar Paquete Completo ZIP Directamente */}
+                <button
+                  type="button"
+                  onClick={() => handleDescargarZip(esNexus ? 'NEXUS' : 'MATRICULA')}
+                  disabled={descargandoZip}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    backgroundColor: descargandoZip ? '#94a3b8' : '#4f46e5',
+                    border: 'none',
+                    color: '#ffffff',
+                    padding: '13px 24px',
+                    borderRadius: '10px',
+                    fontWeight: '800',
+                    fontSize: '0.95rem',
+                    cursor: descargandoZip ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)',
+                    transition: 'all 0.2s ease'
+                  }}
+                >
+                  <span>📦</span>
+                  {descargandoZip
+                    ? 'Generando ZIP...'
+                    : `Descargar paquete completo ZIP (${esNexus ? 'NEXUS' : 'REPORTE'})`}
                 </button>
               </div>
 

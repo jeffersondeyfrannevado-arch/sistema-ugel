@@ -88,7 +88,7 @@ class ExcelFormatTrainingService
 
         $combined = $this->normalizeHeaderText(implode(' ', array_filter(
             array_merge($headerRow, $subHeaderRow, [$sheetTitle, (string) $nivelMuestra]),
-            fn ($value) => $value !== null && $value !== ''
+            fn($value) => $value !== null && $value !== ''
         )));
 
         $bestProfile = null;
@@ -141,9 +141,18 @@ class ExcelFormatTrainingService
 
     public function analyzeWorkbook(UploadedFile $archivo): array
     {
-        $spreadsheet = IOFactory::load($archivo->getRealPath());
+        $reader = IOFactory::createReaderForFile($archivo->getRealPath());
+        $reader->setReadDataOnly(true);
+        if (method_exists($reader, 'setReadEmptyCells')) {
+            $reader->setReadEmptyCells(false);
+        }
+        $spreadsheet = $reader->load($archivo->getRealPath());
         $sheet = $spreadsheet->getActiveSheet();
-        $rows = $sheet->toArray('', true, true, false);
+        $sheetTitle = $sheet->getTitle();
+        $rows = $sheet->toArray('', false, false, false);
+        $spreadsheet->disconnectWorksheets();
+        unset($sheet, $spreadsheet, $reader);
+        gc_collect_cycles();
 
         $dataStartRow = $this->findDataStartRow($rows);
         $headerRowIndex = max(0, $dataStartRow - 2);
@@ -152,12 +161,13 @@ class ExcelFormatTrainingService
         $headerRow = $rows[$headerRowIndex] ?? [];
         $subHeaderRow = $rows[$subHeaderRowIndex] ?? [];
         $headers = $this->buildHeaderInventory($headerRow, $subHeaderRow);
-        $nivel = $this->inferLevel($headerRow, $subHeaderRow, $sheet->getTitle(), $rows[$dataStartRow][9] ?? '');
+        $nivel = $this->inferLevel($headerRow, $subHeaderRow, $sheetTitle, $rows[$dataStartRow][9] ?? '');
         $suggestedColumns = $this->suggestColumnMapping($headerRow, $subHeaderRow, $nivel);
-        $matchKeywords = $this->suggestMatchKeywords($sheet->getTitle(), $nivel, $headerRow, $subHeaderRow);
+        $matchKeywords = $this->suggestMatchKeywords($sheetTitle, $nivel, $headerRow, $subHeaderRow);
+        unset($rows);
 
         return [
-            'sheet' => $sheet->getTitle(),
+            'sheet' => $sheetTitle,
             'nivel_sugerido' => $nivel,
             'fila_inicio_datos' => $dataStartRow + 1,
             'fila_headers' => $headerRowIndex + 1,
@@ -223,7 +233,7 @@ class ExcelFormatTrainingService
             'nombre' => $nombre,
             'nivel' => $nivel,
             'match_keywords' => array_values(array_filter(array_map(
-                fn ($value) => trim((string) $value),
+                fn($value) => trim((string) $value),
                 is_array($payload['match_keywords'] ?? null) ? $payload['match_keywords'] : []
             ))),
             'data_start_row' => (int) ($payload['data_start_row'] ?? 0),
@@ -258,8 +268,7 @@ class ExcelFormatTrainingService
     {
         $sameNameProfiles = array_values(array_filter(
             $profiles,
-            fn (array $profile) =>
-                ($profile['id'] ?? '') !== $profileId &&
+            fn(array $profile) => ($profile['id'] ?? '') !== $profileId &&
                 strtoupper((string) ($profile['nivel'] ?? '')) === $nivel &&
                 trim((string) ($profile['nombre'] ?? '')) === $nombre
         ));
@@ -280,10 +289,10 @@ class ExcelFormatTrainingService
     private function generateUniqueVariantName(string $nombre, string $nivel, array $profiles): string
     {
         $usedNames = array_map(
-            fn (array $profile) => trim((string) ($profile['nombre'] ?? '')),
+            fn(array $profile) => trim((string) ($profile['nombre'] ?? '')),
             array_filter(
                 $profiles,
-                fn (array $profile) => strtoupper((string) ($profile['nivel'] ?? '')) === $nivel
+                fn(array $profile) => strtoupper((string) ($profile['nivel'] ?? '')) === $nivel
             )
         );
 
@@ -340,7 +349,7 @@ class ExcelFormatTrainingService
     {
         $text = $this->normalizeHeaderText(implode(' ', array_filter(
             array_merge($headerRow, $subHeaderRow, [$sheetTitle, (string) $nivelMuestra]),
-            fn ($value) => $value !== null && $value !== ''
+            fn($value) => $value !== null && $value !== ''
         )));
 
         if (

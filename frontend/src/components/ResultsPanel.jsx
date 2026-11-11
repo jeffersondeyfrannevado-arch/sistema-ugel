@@ -186,13 +186,27 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
 
       {/* Sub-Pestaña 2: Filtrado e Individualización por Colegio */}
       {subTab === 'colegios' && (
-        <section style={{
-          background: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '10px',
-          padding: '1.25rem',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
-        }}>
+        <>
+          <div className="zip-row">
+            <button
+              className="btn-zip"
+              onClick={handleZipColegios}
+              disabled={descargando === 'zip_colegios' || colegios.length === 0}
+            >
+              {descargando === 'zip_colegios' ? 'Generando ZIP...' : 'Descargar paquete completo ZIP (Colegios)'}
+            </button>
+            <span className="zip-hint">
+              {colegios.length} archivos individuales agrupados por institución educativa / Código IE
+            </span>
+          </div>
+
+          <section style={{
+            background: '#ffffff',
+            border: '1px solid #e2e8f0',
+            borderRadius: '10px',
+            padding: '1.25rem',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.05)'
+          }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '1rem' }}>
             <div>
               <strong style={{ fontSize: '1.05rem', color: '#0f172a', display: 'block' }}>
@@ -295,7 +309,8 @@ export default function ResultsPanel({ archivos = [], errores = [], colegios = [
               {mensajeColegio.texto}
             </div>
           )}
-        </section>
+          </section>
+        </>
       )}
 
       {errores && errores.length > 0 && (

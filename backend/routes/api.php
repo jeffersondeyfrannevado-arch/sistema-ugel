@@ -141,9 +141,21 @@ Route::match(['get', 'post'], '/view-logs', function (\Illuminate\Http\Request $
     if (!file_exists($logPath)) {
         file_put_contents($logPath, "[" . now() . "] Sistema iniciado correctamente.\n");
     }
-    $lines = file($logPath);
-    $lastLines = array_slice($lines, -150);
-    return response(implode("", $lastLines), 200, ['Content-Type' => 'text/plain']);
+    $logText = '';
+    $size = @filesize($logPath) ?: 0;
+    if ($size > 0) {
+        $readBytes = min($size, 32768);
+        $fp = @fopen($logPath, 'rb');
+        if ($fp) {
+            @fseek($fp, -$readBytes, SEEK_END);
+            $chunk = @fread($fp, $readBytes) ?: '';
+            @fclose($fp);
+            $lines = explode("\n", $chunk);
+            $lastLines = array_slice($lines, -150);
+            $logText = implode("\n", $lastLines);
+        }
+    }
+    return response($logText, 200, ['Content-Type' => 'text/plain']);
 });
 
 Route::middleware('auth:sanctum')->group(function () {

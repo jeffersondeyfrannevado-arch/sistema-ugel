@@ -19,13 +19,21 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg \
     zip \
     xml \
     bcmath \
+    opcache \
     pdo_pgsql \
     pgsql \
     pdo_mysql
 
-# Enable Apache rewrite module and keep a single MPM (prefork, required by mod_php)
+# Enable Apache rewrite module and tune mpm_prefork for Render 512MB RAM limit
 RUN a2dismod -f mpm_event mpm_worker || true \
-    && a2enmod mpm_prefork rewrite headers
+    && a2enmod mpm_prefork rewrite headers \
+    && printf "<IfModule mpm_prefork_module>\n\
+    StartServers             1\n\
+    MinSpareServers          1\n\
+    MaxSpareServers          2\n\
+    MaxRequestWorkers        4\n\
+    MaxConnectionsPerChild   15\n\
+</IfModule>\n" > /etc/apache2/mods-available/mpm_prefork.conf
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

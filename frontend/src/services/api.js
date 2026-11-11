@@ -453,7 +453,8 @@ export async function exportarFiltradoColegio(colegio, tipoExcel) {
 export async function exportarZipColegios(tipoExcel) {
   const res = await fetch(`${BASE_URL}/matricula/filtrar-colegio/exportar-zip`, {
     method: 'POST',
-    headers: getHeaders(),
+    headers: getHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ tipo_excel: tipoExcel || null }),
   })
 
   if (!res.ok) {

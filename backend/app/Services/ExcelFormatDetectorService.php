@@ -23,9 +23,24 @@ class ExcelFormatDetectorService
         $filePath = is_string($file) ? $file : $file->getRealPath();
 
         try {
-            $spreadsheet = IOFactory::load($filePath);
+            $reader = IOFactory::createReaderForFile($filePath);
+            $reader->setReadDataOnly(true);
+            if (method_exists($reader, 'setReadEmptyCells')) {
+                $reader->setReadEmptyCells(false);
+            }
+            $reader->setReadFilter(new class implements \PhpOffice\PhpSpreadsheet\Reader\IReadFilter {
+                public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool
+                {
+                    return $row <= 15;
+                }
+            });
+
+            $spreadsheet = $reader->load($filePath);
             $sheet = $spreadsheet->getActiveSheet();
-            $rows = $sheet->toArray(null, true, true, false);
+            $rows = $sheet->toArray(null, false, false, false);
+            $spreadsheet->disconnectWorksheets();
+            unset($sheet, $spreadsheet, $reader);
+            gc_collect_cycles();
 
             $textBuffer = '';
             $maxInspectRows = min(10, count($rows));
@@ -85,7 +100,6 @@ class ExcelFormatDetectorService
                 'nombre_tipo' => 'Reporte de Matrícula y Niveles',
                 'descripcion' => 'Formato general de matrícula procesado por el sistema.',
             ];
-
         } catch (Exception $e) {
             return [
                 'tipo' => self::TIPO_DESCONOCIDO,

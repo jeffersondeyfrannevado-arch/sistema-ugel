@@ -11,9 +11,33 @@ Route::get('/', function (Request $request) {
         @mkdir($logDir, 0755, true);
     }
 
-    $lines = file_exists($logPath) ? file($logPath) : [];
-    $lastLines = array_slice($lines, -150);
-    $logText = implode("", $lastLines);
+    $logText = '';
+    if (file_exists($logPath)) {
+        $size = @filesize($logPath) ?: 0;
+        // Rotar/truncar automáticamente si el log supera 5 MB para evitar consumo en contenedor Render
+        if ($size > 5 * 1024 * 1024) {
+            $fp = @fopen($logPath, 'rb');
+            if ($fp) {
+                @fseek($fp, -262144, SEEK_END);
+                $tail = @fread($fp, 262144) ?: '';
+                @fclose($fp);
+                @file_put_contents($logPath, $tail);
+                $size = strlen($tail);
+            }
+        }
+        if ($size > 0) {
+            $readBytes = min($size, 32768);
+            $fp = @fopen($logPath, 'rb');
+            if ($fp) {
+                @fseek($fp, -$readBytes, SEEK_END);
+                $chunk = @fread($fp, $readBytes) ?: '';
+                @fclose($fp);
+                $lines = explode("\n", $chunk);
+                $lastLines = array_slice($lines, -150);
+                $logText = implode("\n", $lastLines);
+            }
+        }
+    }
 
     $latestCode = null;
     $latestEmail = null;
@@ -27,7 +51,8 @@ Route::get('/', function (Request $request) {
             $latestEmail = $cached['email'] ?? null;
             $latestTime = $cached['time'] ?? null;
         }
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
 
     // 2. Intentar desde storage/app/latest_mfa.json
     if (!$latestCode) {
